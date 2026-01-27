@@ -6,6 +6,7 @@
 *.userosscache
 *.sln.docstates
 appsettings.Development.json
+appsettings.json
 
 
 **/node_modules/
