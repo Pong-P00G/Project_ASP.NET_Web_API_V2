@@ -1,3 +1,159 @@
+<script setup>
+import { ref, onMounted, computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useWishlistStore } from '../stores/Wishlist'
+import { productAPI } from '../api/productsApi'
+import { cartApi } from '../api/cartApi'
+
+const route = useRoute()
+const router = useRouter()
+const wishlist = useWishlistStore()
+const product = ref(null)
+const loading = ref(true)
+const error = ref(null)
+const selectedImage = ref(null)
+const selectedVariants = ref({})
+const quantity = ref(1)
+const addingToCart = ref(false)
+
+const fetchProduct = async (id) => {
+    try {
+        loading.value = true
+        error.value = null
+
+        console.log('Fetching product with ID:', id)
+        const response = await productAPI.getProductsById(id)
+        console.log('Product API Response:', response)
+
+        // Handle API response structure
+        const productData = response.data
+
+        if (!productData) {
+            throw new Error('Product not found')
+        }
+
+        // Map API response to component format
+        product.value = {
+            id: productData.productId,
+            name: productData.productName,
+            basePrice: productData.basePrice,
+            originalPrice: productData.originalPrice || productData.basePrice,
+            discountPercentage: productData.discountPercentage || 0,
+            description: productData.description || 'No description available',
+            images: productData.images || [],
+            inStock: productData.stockStatus !== 'out-of-stock' && productData.stock > 0,
+            stock: productData.stock,
+            stockStatus: productData.stockStatus,
+            category: productData.categories?.[0]?.categoryName || 'Uncategorized',
+            sku: productData.sku || 'N/A',
+            supplier: productData.supplier || 'N/A',
+            featured: productData.featured || false,
+            variants: productData.variants || []
+        }
+
+        // Set the first image as selected by default
+        if (product.value.images && product.value.images.length > 0) {
+            selectedImage.value = product.value.images[0]
+        }
+
+        console.log('Processed product:', product.value)
+    } catch (err) {
+        console.error('Error fetching product:', err)
+        error.value = err.message || 'Failed to load product'
+        product.value = null
+    } finally {
+        loading.value = false
+    }
+}
+
+const selectImage = (image) => {
+    selectedImage.value = image
+}
+
+const groupedVariants = computed(() => {
+    if (!product.value || !product.value.variants) return []
+
+    // Group variants by their type (e.g., Color, Size)
+    const grouped = {}
+
+    product.value.variants.forEach(variant => {
+        variant.options.forEach(option => {
+            if (!grouped[option.variant]) {
+                grouped[option.variant] = {
+                    name: option.variant,
+                    options: []
+                }
+            }
+
+            // Check if option already exists to avoid duplicates
+            const exists = grouped[option.variant].options.some(opt => opt.value === option.value)
+            if (!exists) {
+                grouped[option.variant].options.push({
+                    value: option.value
+                })
+            }
+        })
+    })
+
+    return Object.values(grouped)
+})
+
+const selectVariant = (variantName, value) => {
+    selectedVariants.value[variantName] = value
+}
+
+const increaseQuantity = () => {
+    if (product.value && quantity.value < product.value.stock) {
+        quantity.value++
+    }
+}
+
+const decreaseQuantity = () => {
+    if (quantity.value > 1) {
+        quantity.value--
+    }
+}
+
+const addToCart = async (prod) => {
+    if (!prod.inStock) {
+        alert('This product is out of stock!')
+        return
+    }
+
+    try {
+        addingToCart.value = true
+        await cartApi.addToCart(prod.id, quantity.value)
+        router.push('/cart')
+    } catch (err) {
+        console.error('Error adding to cart:', err)
+        alert('Failed to add to cart. Please try again.')
+    } finally {
+        addingToCart.value = false
+    }
+}
+
+const addToWishlist = (prod) => {
+    if (!prod.inStock) {
+        alert('This product is out of stock!')
+        return
+    }
+
+    wishlist.addToWishlist(prod)
+    alert(`${prod.name} added to wishlist!`)
+}
+
+onMounted(() => {
+    const productId = route.params.id
+    if (productId) {
+        fetchProduct(productId)
+    } else {
+        loading.value = false
+        error.value = 'No product ID provided'
+    }
+})
+</script>
+
+
 <template>
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div v-if="loading" class="flex justify-center items-center h-64">
@@ -203,171 +359,3 @@
         </div>
     </div>
 </template>
-
-<script setup>
-import { ref, onMounted, computed } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { useWishlistStore } from '../stores/Wishlist'
-import { productAPI } from '../api/productsApi'
-import { cartApi } from '../api/cartApi'
-
-const route = useRoute()
-const router = useRouter()
-const wishlist = useWishlistStore()
-const product = ref(null)
-const loading = ref(true)
-const error = ref(null)
-const selectedImage = ref(null)
-const selectedVariants = ref({})
-const quantity = ref(1)
-const addingToCart = ref(false)
-
-const fetchProduct = async (id) => {
-    try {
-        loading.value = true
-        error.value = null
-
-        console.log('Fetching product with ID:', id)
-        const response = await productAPI.getProductsById(id)
-        console.log('Product API Response:', response)
-
-        // Handle API response structure
-        const productData = response.data
-
-        if (!productData) {
-            throw new Error('Product not found')
-        }
-
-        // Map API response to component format
-        product.value = {
-            id: productData.productId,
-            name: productData.productName,
-            basePrice: productData.basePrice,
-            originalPrice: productData.originalPrice || productData.basePrice,
-            discountPercentage: productData.discountPercentage || 0,
-            description: productData.description || 'No description available',
-            images: productData.images || [],
-            inStock: productData.stockStatus !== 'out-of-stock' && productData.stock > 0,
-            stock: productData.stock,
-            stockStatus: productData.stockStatus,
-            category: productData.categories?.[0]?.categoryName || 'Uncategorized',
-            sku: productData.sku || 'N/A',
-            supplier: productData.supplier || 'N/A',
-            featured: productData.featured || false,
-            variants: productData.variants || []
-        }
-
-        // Set the first image as selected by default
-        if (product.value.images && product.value.images.length > 0) {
-            selectedImage.value = product.value.images[0]
-        }
-
-        console.log('Processed product:', product.value)
-    } catch (err) {
-        console.error('Error fetching product:', err)
-        error.value = err.message || 'Failed to load product'
-        product.value = null
-    } finally {
-        loading.value = false
-    }
-}
-
-const selectImage = (image) => {
-    selectedImage.value = image
-}
-
-const groupedVariants = computed(() => {
-    if (!product.value || !product.value.variants) return []
-
-    // Group variants by their type (e.g., Color, Size)
-    const grouped = {}
-
-    product.value.variants.forEach(variant => {
-        variant.options.forEach(option => {
-            if (!grouped[option.variant]) {
-                grouped[option.variant] = {
-                    name: option.variant,
-                    options: []
-                }
-            }
-
-            // Check if option already exists to avoid duplicates
-            const exists = grouped[option.variant].options.some(opt => opt.value === option.value)
-            if (!exists) {
-                grouped[option.variant].options.push({
-                    value: option.value
-                })
-            }
-        })
-    })
-
-    return Object.values(grouped)
-})
-
-const selectVariant = (variantName, value) => {
-    selectedVariants.value[variantName] = value
-}
-
-const increaseQuantity = () => {
-    if (product.value && quantity.value < product.value.stock) {
-        quantity.value++
-    }
-}
-
-const decreaseQuantity = () => {
-    if (quantity.value > 1) {
-        quantity.value--
-    }
-}
-
-const addToCart = async (prod) => {
-    if (!prod.inStock) {
-        alert('This product is out of stock!')
-        return
-    }
-
-    try {
-        addingToCart.value = true
-
-        // In a real implementation, you would add the product to the cart with selected variants and quantity
-        // For now, we'll use the basic addToCart from the API which might only take productId and quantity
-        // Adjust this based on your actual API capability
-
-        await cartApi.addToCart(prod.id, quantity.value)
-
-        const choice = confirm(`${prod.name} added to cart! \n\nClick OK to proceed to Checkout, or Cancel to continue shopping.`)
-        if (choice) {
-            router.push('/checkout')
-        }
-    } catch (err) {
-        console.error('Error adding to cart:', err)
-        alert('Failed to add to cart. Please try again.')
-    } finally {
-        addingToCart.value = false
-    }
-}
-
-const addToWishlist = (prod) => {
-    if (!prod.inStock) {
-        alert('This product is out of stock!')
-        return
-    }
-
-    wishlist.addToWishlist(prod)
-    alert(`${prod.name} added to wishlist!`)
-}
-
-onMounted(() => {
-    const productId = route.params.id
-    if (productId) {
-        fetchProduct(productId)
-    } else {
-        loading.value = false
-        error.value = 'No product ID provided'
-    }
-})
-</script>
-
-<style scoped>
-/* Add any additional custom styles here */
-</style>

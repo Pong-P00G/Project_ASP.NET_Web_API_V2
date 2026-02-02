@@ -1,6 +1,6 @@
 <script setup>
 import { ref } from 'vue';
-import { authAPI } from '../../api/authApi';
+import { useAuthStore } from '../../stores/Auth';
 import { useRouter } from 'vue-router';
 import { RouterLink } from 'vue-router';
 import {
@@ -34,19 +34,22 @@ const handleLogin = async () => {
   loading.value = true;
 
   try {
-    const response = await authAPI.login({
+    const authStore = useAuthStore();
+    const response = await authStore.login({
       emailOrUsername: emailOrUsername.value,
-      password: password.value
+      password: password.value,
+      remember: rememberMe.value
     });
 
-    // Token is already stored in authApi.js
-    // Handle remember me preference
-
+    // Token is handled by store
+    
     // Redirect based on user role
     const user = response.data?.user;
     const userRole = user?.roleName || user?.role || user?.roleId;
+    // Normalize logic
+    const normalizedRole = String(userRole).toLowerCase();
 
-    if (userRole === 'admin' || userRole === 'Admin' || userRole === 1) {
+    if (normalizedRole === 'admin' || userRole === 1) {
       router.push('/admin/dashboard');
     } else {
       router.push('/');

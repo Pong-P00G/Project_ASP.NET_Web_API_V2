@@ -1,13 +1,18 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import '../assets/Navbar.css';
-import { RouterLink, useRoute } from 'vue-router';
-import { ShoppingCart, Search, User, Heart, Menu, MenuSquare } from 'lucide-vue-next';
+import { RouterLink, useRoute, useRouter } from 'vue-router';
+import { ShoppingCart, Search, User, Heart, Menu, LogOut, Settings, ChevronDown } from 'lucide-vue-next';
 import Icons from '../assets/icons/icons.vue';
+import { useAuthStore } from '../stores/Auth';
 
 const route = useRoute();
+const router = useRouter();
+const authStore = useAuthStore();
+
 const isMenuOpen = ref(false);
 const isSearchOpen = ref(false);
+const isProfileOpen = ref(false);
 const scrolled = ref(false);
 const cartCount = ref(''); // Example cart count
 
@@ -23,6 +28,17 @@ const closeMenu = () => {
 
 const toggleSearch = () => {
   isSearchOpen.value = !isSearchOpen.value;
+};
+
+const toggleProfile = () => {
+  isProfileOpen.value = !isProfileOpen.value;
+};
+
+const logout = () => {
+  authStore.logout();
+  isProfileOpen.value = false;
+  closeMenu();
+  router.push('/login');
 };
 
 const Navlinks = ref([
@@ -44,22 +60,45 @@ const handleEscapeKey = (event) => {
   if (event.key === 'Escape') {
     if (isMenuOpen.value) closeMenu();
     if (isSearchOpen.value) isSearchOpen.value = false;
+    if (isProfileOpen.value) isProfileOpen.value = false;
   }
 };
 
+// Close profile dropdown when clicking outside
+const closeOnClickOutside = (event) => {
+    if (isProfileOpen.value && !event.target.closest('.profile-dropdown-container')) {
+        isProfileOpen.value = false;
+    }
+};
+
 onMounted(() => {
-  document.addEventListener('keydown', handleEscapeKey);
-  window.addEventListener('scroll', handleScroll);
+    authStore.initializeAuth(); // Ensure auth state is restored
+    document.addEventListener('keydown', handleEscapeKey);
+    document.addEventListener('click', closeOnClickOutside);
+    window.addEventListener('scroll', handleScroll);
 });
 
 onUnmounted(() => {
-  document.removeEventListener('keydown', handleEscapeKey);
-  window.removeEventListener('scroll', handleScroll);
-  document.body.style.overflow = '';
+    document.removeEventListener('keydown', handleEscapeKey);
+    document.removeEventListener('click', closeOnClickOutside);
+    window.removeEventListener('scroll', handleScroll);
+    document.body.style.overflow = '';
 });
 
 watch(route, () => {
   closeMenu();
+  isProfileOpen.value = false;
+});
+
+// Computed properties for user display
+const userDisplayName = computed(() => {
+    if (!authStore.user) return 'User';
+    return authStore.user.firstName || authStore.user.username || 'User';
+});
+
+const userAvatarInitial = computed(() => {
+    const name = userDisplayName.value;
+    return name ? name.charAt(0).toUpperCase() : 'U';
 });
 
 </script>
@@ -113,13 +152,46 @@ watch(route, () => {
           </RouterLink>
           <!-- Vertical Divider -->
           <div class="w-px h-4 bg-gray-200 mx-2"></div>
-          <!-- Login Button -->
-          <RouterLink to="/login"
+          
+          <!-- Auth Section -->
+          <div v-if="authStore.isAuthenticated" class="relative profile-dropdown-container">
+             <button @click="toggleProfile" class="flex items-center gap-2 pl-2 pr-1 py-1 rounded-full hover:bg-gray-100 transition-all duration-300 border border-transparent hover:border-gray-200">
+                <div class="w-8 h-8 rounded-full bg-gray-900 text-white flex items-center justify-center text-sm font-bold shadow-md">
+                    {{ userAvatarInitial }}
+                </div>
+                <ChevronDown class="w-4 h-4 text-gray-500 transition-transform duration-300" :class="{ 'rotate-180': isProfileOpen }" />
+             </button>
+
+             <!-- Profile Dropdown -->
+             <transition name="slide-fade">
+                <div v-if="isProfileOpen" class="absolute top-full right-0 mt-3 w-60 bg-white rounded-2xl shadow-xl border border-gray-100 p-2 overflow-hidden transform origin-top-right">
+                    <div class="px-4 py-3 border-b border-gray-50 mb-2 bg-gray-50/50 rounded-xl">
+                        <p class="text-xs text-gray-500 font-bold uppercase tracking-wider">Signed in as</p>
+                        <p class="text-sm font-bold text-gray-900 truncate">{{ userDisplayName }}</p>
+                         <p class="text-xs text-gray-500 truncate">{{ authStore.user?.email }}</p>
+                    </div>
+                    
+                    <RouterLink v-if="authStore.userRole === 'admin'" to="/admin/dashboard" class="flex items-center gap-3 px-4 py-2 text-sm font-medium text-gray-700 rounded-xl hover:bg-gray-50 hover:text-gray-900 transition-colors">
+                        <Settings class="w-4 h-4" />
+                        Admin Dashboard
+                    </RouterLink>
+                    
+                    <button @click="logout" class="w-full flex items-center gap-3 px-4 py-2 text-sm font-medium text-red-600 rounded-xl hover:bg-red-50 transition-colors text-left">
+                        <LogOut class="w-4 h-4" />
+                        Sign Out
+                    </button>
+                </div>
+             </transition>
+          </div>
+
+          <!-- Login Button (If Not Authenticated) -->
+          <RouterLink v-else to="/login"
             class="ml-2 px-8 py-3 text-sm font-bold text-white bg-gray-800 rounded-full hover:bg-black transition-all duration-300 shadow-lg hover:shadow-violet-200 flex items-center gap-2 group">
             <User class="w-4 h-4 group-hover:scale-110 transition-transform" />
             Sign In
           </RouterLink>
         </div>
+
         <!-- Mobile Menu Button -->
         <button @click="toggleMenu" class="lg:hidden p-3 rounded-full bg-gray-50 hover:bg-gray-100 transition-all duration-300"
           :aria-expanded="isMenuOpen" aria-controls="mobile-menu" aria-label="Toggle menu">
@@ -145,7 +217,7 @@ watch(route, () => {
         <!-- Backdrop -->
         <div class="absolute inset-0 bg-black/20 backdrop-blur-sm" @click="closeMenu" aria-hidden="true"></div>
         <!-- Sidebar -->
-        <div class="absolute top-0 right-0 w-80 h-full bg-white shadow-2xl overflow-y-auto">
+        <div class="absolute top-0 right-0 w-80 h-full bg-white shadow-2xl overflow-y-auto flex flex-col">
           <!-- Header -->
           <div
             class="flex justify-between items-center p-6 border-b border-gray-50">
@@ -157,6 +229,20 @@ watch(route, () => {
               <Icons name="X" class="w-6 h-6 text-gray-800" />
             </button>
           </div>
+
+          <!-- User Info (Mobile) -->
+          <div v-if="authStore.isAuthenticated" class="p-6 bg-gray-50">
+             <div class="flex items-center gap-4">
+                 <div class="w-12 h-12 rounded-full bg-gray-900 text-white flex items-center justify-center text-lg font-bold shadow-md">
+                    {{ userAvatarInitial }}
+                </div>
+                <div>
+                     <p class="font-bold text-gray-900">{{ userDisplayName }}</p>
+                     <p class="text-xs text-gray-500">{{ authStore.user?.email }}</p>
+                </div>
+             </div>
+          </div>
+
           <!-- Mobile Search -->
           <div class="p-6">
             <div class="relative">
@@ -166,7 +252,7 @@ watch(route, () => {
             </div>
           </div>
           <!-- Navigation Links -->
-          <nav class="p-6 pt-0">
+          <nav class="p-6 pt-0 flex-1">
             <ul class="space-y-2">
               <li v-for="link in Navlinks" :key="link.label + '-mobile'">
                 <RouterLink :to="link.to" class="flex items-center gap-4 p-4 rounded-2xl transition-all duration-300 group"
@@ -179,6 +265,15 @@ watch(route, () => {
                     <Icons :name="link.icon" class="w-5 h-5" />
                   </div>
                   <span class="font-bold">{{ link.label }}</span>
+                </RouterLink>
+              </li>
+              
+               <li v-if="authStore.isAuthenticated && authStore.userRole === 'admin'">
+                <RouterLink to="/admin/dashboard" class="flex items-center gap-4 p-4 rounded-2xl text-gray-600 hover:bg-gray-50 transition-colors" @click="closeMenu">
+                  <div class="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center">
+                    <Settings class="w-5 h-5" />
+                  </div>
+                  <span class="font-bold">Admin Dashboard</span>
                 </RouterLink>
               </li>
             </ul>
@@ -202,8 +297,14 @@ watch(route, () => {
                 </span>
               </RouterLink>
             </div>
-            <!-- Login Button -->
-            <RouterLink to="/login" @click="closeMenu"
+            
+            <!-- Login / Logout Button -->
+            <button v-if="authStore.isAuthenticated" @click="logout"
+              class="flex items-center justify-center gap-3 w-full px-6 py-4 text-sm font-bold text-red-600 bg-red-50 rounded-2xl hover:bg-red-100 transition-all duration-300">
+              <LogOut class="w-5 h-5" />
+              Sign Out
+            </button>
+            <RouterLink v-else to="/login" @click="closeMenu"
               class="flex items-center justify-center gap-3 w-full px-6 py-4 text-sm font-bold text-white bg-gray-900 rounded-2xl hover:bg-violet-600 transition-all duration-300 shadow-xl">
               <User class="w-5 h-5" />
               Sign In / Join Now

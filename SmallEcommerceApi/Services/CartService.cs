@@ -182,7 +182,7 @@ namespace SmallEcommerceApi.Services
                 .Include(c => c.Items)
                 .ThenInclude(i => i.ProductVariant)
                 .ThenInclude(pv => pv.Product)
-                .ThenInclude(p => p.ProductImages); // Include images for display
+                .ThenInclude(p => p!.ProductImages); // Include images for display
 
             Cart? cart = null;
 

@@ -15,15 +15,34 @@ namespace SmallEcommerceApi.Services
             _context = context;
         }
 
-        public async Task<OrderResponseDto> CreateOrderAsync(int userId, CreateOrderDto dto)
+        public async Task<OrderResponseDto> CreateOrderAsync(int userId, string? sessionId, CreateOrderDto dto)
         {
-            // Get user's cart with items
+            // Try to find cart by userId first
             var cart = await _context.Carts
                 .Include(c => c.Items)
                     .ThenInclude(ci => ci.ProductVariant)
                         .ThenInclude(pv => pv.Product)
-                            .ThenInclude(p => p.ProductImages)
+                            .ThenInclude(p => p!.ProductImages)
                 .FirstOrDefaultAsync(c => c.UserId == userId);
+
+            // If no cart found by userId or cart is empty, try finding by sessionId
+            if ((cart == null || !cart.Items.Any()) && !string.IsNullOrEmpty(sessionId))
+            {
+                cart = await _context.Carts
+                    .Include(c => c.Items)
+                        .ThenInclude(ci => ci.ProductVariant)
+                            .ThenInclude(pv => pv.Product)
+                                .ThenInclude(p => p!.ProductImages)
+                    .FirstOrDefaultAsync(c => c.SessionId == sessionId);
+                
+                // If found by session, associate it with the user
+                if (cart != null && cart.Items.Any())
+                {
+                    cart.UserId = userId;
+                    cart.SessionId = null; // Clear session since it's now linked to user
+                    await _context.SaveChangesAsync();
+                }
+            }
 
             if (cart == null || !cart.Items.Any())
             {
@@ -45,9 +64,9 @@ namespace SmallEcommerceApi.Services
                 UserId = userId,
                 OrderNumber = orderNumber,
                 OrderStatus = "PENDING",
-                PaymentMethod = dto.PaymentMethod,
-                Phone = dto.Phone,
-                ShippingAddress = dto.Location,
+                PaymentMethod = dto.PaymentMethod ?? "cash",
+                Phone = dto.Phone ?? "",
+                ShippingAddress = dto.Location ?? "",
                 Subtotal = subtotal,
                 ShippingCost = shippingCost,
                 Tax = tax,
@@ -62,15 +81,22 @@ namespace SmallEcommerceApi.Services
             // Create order items from cart items
             foreach (var cartItem in cart.Items)
             {
-                var product = cartItem.ProductVariant?.Product;
-                var firstImage = product?.ProductImages?.FirstOrDefault()?.ImageUrl;
+                // Safely get product info with null checks
+                string productName = "Unknown Product";
+                string? productImage = null;
+                
+                if (cartItem.ProductVariant?.Product != null)
+                {
+                    productName = cartItem.ProductVariant.Product.ProductName ?? productName;
+                    productImage = cartItem.ProductVariant.Product.ProductImages?.FirstOrDefault()?.ImageUrl;
+                }
 
                 var orderItem = new OrderItem
                 {
                     OrderId = order.OrderId,
                     ProductVariantId = cartItem.ProductVariantId,
-                    ProductName = product?.ProductName ?? "Unknown Product",
-                    ProductImage = firstImage,
+                    ProductName = productName,
+                    ProductImage = productImage,
                     Quantity = cartItem.Quantity,
                     UnitPrice = cartItem.Price,
                     TotalPrice = cartItem.Price * cartItem.Quantity
@@ -79,7 +105,7 @@ namespace SmallEcommerceApi.Services
                 _context.OrderItems.Add(orderItem);
             }
 
-            // Clear the cart
+            // Clear the cart items
             _context.CartItems.RemoveRange(cart.Items);
             await _context.SaveChangesAsync();
 
@@ -103,6 +129,26 @@ namespace SmallEcommerceApi.Services
         {
             var order = await _context.Orders
                 .Where(o => o.UserId == userId && o.OrderId == orderId)
+                .Include(o => o.Items)
+                .FirstOrDefaultAsync();
+
+            return order == null ? null : MapToDto(order);
+        }
+
+        public async Task<List<OrderResponseDto>> GetAllOrdersAsync()
+        {
+            var orders = await _context.Orders
+                .Include(o => o.Items)
+                .OrderByDescending(o => o.CreatedAt)
+                .ToListAsync();
+
+            return orders.Select(MapToDto).ToList();
+        }
+
+        public async Task<OrderResponseDto?> GetOrderByIdForAdminAsync(int orderId)
+        {
+            var order = await _context.Orders
+                .Where(o => o.OrderId == orderId)
                 .Include(o => o.Items)
                 .FirstOrDefaultAsync();
 

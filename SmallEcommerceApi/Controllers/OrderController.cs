@@ -31,6 +31,25 @@ namespace SmallEcommerceApi.Controllers
             return userId;
         }
 
+        private string? GetSessionId()
+        {
+            // Get session ID from header (same as CartController)
+            if (Request.Headers.TryGetValue("X-Cart-Session", out var headerSessionId) 
+                && !string.IsNullOrEmpty(headerSessionId.ToString()))
+            {
+                return headerSessionId.ToString();
+            }
+
+            // Then try cookie
+            if (Request.Cookies.TryGetValue("CartSessionId", out string? cookieSessionId) 
+                && !string.IsNullOrEmpty(cookieSessionId))
+            {
+                return cookieSessionId;
+            }
+
+            return null;
+        }
+
         /// <summary>
         /// Create a new order from the user's cart
         /// </summary>
@@ -40,7 +59,8 @@ namespace SmallEcommerceApi.Controllers
             try
             {
                 var userId = GetUserId();
-                var order = await _orderService.CreateOrderAsync(userId, dto);
+                var sessionId = GetSessionId();
+                var order = await _orderService.CreateOrderAsync(userId, sessionId, dto);
                 return CreatedAtAction(nameof(GetOrder), new { id = order.OrderId }, order);
             }
             catch (InvalidOperationException ex)
@@ -50,6 +70,12 @@ namespace SmallEcommerceApi.Controllers
             catch (UnauthorizedAccessException)
             {
                 return Unauthorized(new { message = "User not authenticated" });
+            }
+            catch (Exception ex)
+            {
+                // Log the full exception for debugging
+                Console.WriteLine($"Order creation error: {ex}");
+                return StatusCode(500, new { message = $"Internal server error: {ex.Message}" });
             }
         }
 
@@ -93,6 +119,32 @@ namespace SmallEcommerceApi.Controllers
             {
                 return Unauthorized(new { message = "User not authenticated" });
             }
+        }
+
+        /// <summary>
+        /// Get all orders (Admin only)
+        /// </summary>
+        [HttpGet("admin/all")]
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult<List<OrderResponseDto>>> GetAllOrdersForAdmin()
+        {
+            var orders = await _orderService.GetAllOrdersAsync();
+            return Ok(orders);
+        }
+
+        /// <summary>
+        /// Get order details (Admin only)
+        /// </summary>
+        [HttpGet("admin/{id}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult<OrderResponseDto>> GetOrderForAdmin(int id)
+        {
+            var order = await _orderService.GetOrderByIdForAdminAsync(id);
+            if (order == null)
+            {
+                return NotFound(new { message = "Order not found" });
+            }
+            return Ok(order);
         }
 
         /// <summary>

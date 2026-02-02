@@ -312,6 +312,67 @@ namespace SmallEcommerceApi.Db
                         entity.HasIndex(x => new { x.UserId, x.ProductId }).IsUnique();
                   });
 
+                  // ORDERS
+                  modelBuilder.Entity<Order>(entity =>
+                  {
+                        entity.ToTable("orders");
+
+                        entity.HasKey(x => x.OrderId);
+
+                        entity.Property(x => x.OrderId)
+                        .HasColumnName("order_id")
+                        .ValueGeneratedOnAdd();
+
+                        entity.Property(x => x.UserId).HasColumnName("user_id");
+                        entity.Property(x => x.PaymentId).HasColumnName("payment_id");
+                        entity.Property(x => x.OrderNumber).HasColumnName("order_number").HasMaxLength(100).IsRequired();
+                        entity.Property(x => x.OrderStatus).HasColumnName("order_status").HasMaxLength(50);
+                        entity.Property(x => x.PaymentMethod).HasColumnName("payment_method").HasMaxLength(50);
+                        entity.Property(x => x.Phone).HasColumnName("phone").HasMaxLength(20);
+                        entity.Property(x => x.ShippingAddress).HasColumnName("shipping_address").HasMaxLength(500);
+                        entity.Property(x => x.Subtotal).HasColumnName("subtotal").HasColumnType("decimal(10,2)");
+                        entity.Property(x => x.ShippingCost).HasColumnName("shipping_cost").HasColumnType("decimal(10,2)");
+                        entity.Property(x => x.Tax).HasColumnName("tax").HasColumnType("decimal(10,2)");
+                        entity.Property(x => x.TotalAmount).HasColumnName("total_amount").HasColumnType("decimal(10,2)");
+                        entity.Property(x => x.CreatedAt).HasColumnName("created_at");
+                        entity.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+
+                        entity.HasOne(x => x.User)
+                        .WithMany()
+                        .HasForeignKey(x => x.UserId)
+                        .OnDelete(DeleteBehavior.Cascade);
+                  });
+
+                  // ORDER ITEMS
+                  modelBuilder.Entity<OrderItem>(entity =>
+                  {
+                        entity.ToTable("order_item");
+
+                        entity.HasKey(x => x.OrderItemId);
+
+                        entity.Property(x => x.OrderItemId)
+                        .HasColumnName("order_item_id")
+                        .ValueGeneratedOnAdd();
+
+                        entity.Property(x => x.OrderId).HasColumnName("order_id");
+                        entity.Property(x => x.ProductVariantId).HasColumnName("product_variant_id");
+                        entity.Property(x => x.ProductName).HasColumnName("product_name").HasMaxLength(255);
+                        entity.Property(x => x.ProductImage).HasColumnName("product_image").HasMaxLength(500);
+                        entity.Property(x => x.Quantity).HasColumnName("quantity");
+                        entity.Property(x => x.UnitPrice).HasColumnName("unit_price").HasColumnType("decimal(10,2)");
+                        entity.Property(x => x.TotalPrice).HasColumnName("total_price").HasColumnType("decimal(10,2)");
+
+                        entity.HasOne(x => x.Order)
+                        .WithMany(o => o.Items)
+                        .HasForeignKey(x => x.OrderId)
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                        entity.HasOne(x => x.ProductVariant)
+                        .WithMany()
+                        .HasForeignKey(x => x.ProductVariantId)
+                        .OnDelete(DeleteBehavior.Restrict);
+                  });
+
                   // SEED ROLES
                   modelBuilder.Entity<UserRole>().HasData(
                       new UserRole { RoleId = 1, RoleName = "Admin" },

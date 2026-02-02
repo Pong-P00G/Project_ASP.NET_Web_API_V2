@@ -56,6 +56,23 @@ const routes = [
                 }
             },
             {
+                name: 'Checkout',
+                path: '/checkout',
+                component: () => import("../views/CheckoutPage.vue"),
+                meta: {
+                    title: 'Secure Checkout - AlieeShop'
+                }
+            },
+            {
+                name: 'OrderSuccess',
+                path: '/order-success/:id',
+                component: () => import("../views/OrderSuccessPage.vue"),
+                meta: {
+                    title: 'Order Confirmed - AlieeShop',
+                    requiresAuth: true
+                }
+            },
+            {
                 name: 'Wishlist',
                 path: '/wishlist',
                 component: () => import('../views/WishListPage.vue')
@@ -129,6 +146,11 @@ const routes = [
                 path: '/admin/user',
                 name: 'AdminUsers',
                 component: () => import('../views/admin/ManageUser.vue'),
+            },
+            {
+                path: '/admin/orders',
+                name: 'AdminOrders',
+                component: () => import('../views/admin/OrderManagement.vue'),
             },
             {
                 path: '/admin/stock',

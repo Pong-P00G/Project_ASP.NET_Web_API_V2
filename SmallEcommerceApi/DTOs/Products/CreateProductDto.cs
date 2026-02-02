@@ -41,5 +41,7 @@ namespace SmallEcommerceApi.DTOs.Products
 
         public new bool? IsActive { get; set; }
         public new bool? Featured { get; set; }
+
+        public List<ProductVariantDto>? Variants { get; set; }
     }
 }

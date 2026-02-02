@@ -273,7 +273,7 @@ namespace SmallEcommerceApi.Controllers.Products
                     Categories = p.ProductCategories.Select(pc => new CategoryDto
                     {
                         CategoryId = pc.CategoryId,
-                        CategoryName = pc.Category != null ? pc.Category.CategoryName : string.Empty
+                        CategoryName = pc.Category != null ? (pc.Category!.CategoryName ?? string.Empty) : string.Empty
                     }).ToList(),
                     Images = p.ProductImages.Select(img => new ImageDto
                     {
@@ -349,6 +349,7 @@ namespace SmallEcommerceApi.Controllers.Products
             if (dto.Featured.HasValue)
                 product.Featured = dto.Featured.Value;
 
+
             if (dto.ImageUrls != null)
             {
                 var existingImages = _db.ProductImages.Where(i => i.ProductId == id);
@@ -365,6 +366,101 @@ namespace SmallEcommerceApi.Controllers.Products
                         DisplayOrder = order++,
                         CreatedAt = DateTime.UtcNow
                     });
+                }
+            }
+
+            // Categories
+            if (dto.CategoryNames != null)
+            {
+                var existingCategories = _db.ProductCategories.Where(pc => pc.ProductId == id);
+                _db.ProductCategories.RemoveRange(existingCategories);
+
+                foreach (var name in dto.CategoryNames.Where(x => !string.IsNullOrWhiteSpace(x)))
+                {
+                    var category = await _db.Categories
+                        .FirstOrDefaultAsync(c => c.CategoryName == name.Trim());
+
+                    if (category == null)
+                    {
+                        category = new Category
+                        {
+                            CategoryName = name.Trim(),
+                            IsActive = true,
+                            CreatedAt = DateTime.UtcNow,
+                            UpdatedAt = DateTime.UtcNow
+                        };
+                        _db.Categories.Add(category);
+                        await _db.SaveChangesAsync(); // Need ID for new category
+                    }
+
+                    _db.ProductCategories.Add(new ProductCategory
+                    {
+                        ProductId = product.ProductId,
+                        CategoryId = category.CategoryId
+                    });
+                }
+            }
+
+            // Variants
+            if (dto.Variants != null)
+            {
+                var existingVariants = _db.ProductVariants
+                    .Include(v => v.ProductVariantOptions)
+                    .Where(v => v.ProductId == id);
+                
+                foreach (var v in existingVariants)
+                {
+                    _db.ProductVariantOptions.RemoveRange(v.ProductVariantOptions);
+                }
+                _db.ProductVariants.RemoveRange(existingVariants);
+                await _db.SaveChangesAsync();
+
+                foreach (var v in dto.Variants)
+                {
+                    if (string.IsNullOrWhiteSpace(v.SKU)) continue;
+
+                    var pv = new ProductVariant
+                    {
+                        ProductId = product.ProductId,
+                        SKU = v.SKU,
+                        Price = v.Price,
+                        StockQuantity = v.StockQuantity,
+                        IsActive = v.IsActive,
+                        CreatedAt = DateTime.UtcNow
+                    };
+
+                    _db.ProductVariants.Add(pv);
+                    await _db.SaveChangesAsync();
+
+                    if (v.Options != null)
+                    {
+                        foreach (var opt in v.Options)
+                        {
+                            if (string.IsNullOrWhiteSpace(opt.Variant) || string.IsNullOrWhiteSpace(opt.Value)) continue;
+
+                            var variant = await _db.Variants.FirstOrDefaultAsync(x => x.Name == opt.Variant.Trim());
+                            if (variant == null)
+                            {
+                                variant = new Variant { Name = opt.Variant.Trim(), CreatedAt = DateTime.UtcNow };
+                                _db.Variants.Add(variant);
+                                await _db.SaveChangesAsync();
+                            }
+
+                            var option = await _db.VariantOptions.FirstOrDefaultAsync(x => x.VariantId == variant.VariantId && x.OptionValue == opt.Value.Trim());
+                            if (option == null)
+                            {
+                                option = new VariantOption { VariantId = variant.VariantId, OptionValue = opt.Value.Trim() };
+                                _db.VariantOptions.Add(option);
+                                await _db.SaveChangesAsync();
+                            }
+
+                            _db.ProductVariantOptions.Add(new ProductVariantOption
+                            {
+                                ProductVariantId = pv.ProductVariantId,
+                                OptionId = option.OptionId
+                            });
+                        }
+                    }
                 }
             }
 
@@ -498,7 +594,7 @@ namespace SmallEcommerceApi.Controllers.Products
                     Categories = p.ProductCategories.Select(pc => new CategoryDto
                     {
                         CategoryId = pc.CategoryId,
-                        CategoryName = pc.Category != null ? pc.Category.CategoryName : string.Empty
+                        CategoryName = pc.Category != null ? (pc.Category!.CategoryName ?? string.Empty) : string.Empty
                     }).ToList(),
                     Images = p.ProductImages.Select(img => new ImageDto
                     {
@@ -507,7 +603,7 @@ namespace SmallEcommerceApi.Controllers.Products
                         IsPrimary = img.IsPrimary,
                         DisplayOrder = img.DisplayOrder
                     }).OrderBy(i => i.DisplayOrder).ToList(),
-                    Variants = p.ProductVariants.Select(pv => new VariantResponseDto
+                    Variants = p.ProductVariants!.Select(pv => new VariantResponseDto
                     {
                         ProductVariantId = pv.ProductVariantId,
                         SKU = pv.SKU,
@@ -515,7 +611,7 @@ namespace SmallEcommerceApi.Controllers.Products
                         StockQuantity = pv.StockQuantity,
                         Options = pv.ProductVariantOptions.Select(pvo => new VariantOptionDto
                         {
-                            Variant = pvo.VariantOption.Variant.Name,
+                            Variant = pvo.VariantOption.Variant.Name ?? string.Empty,
                             Value = pvo.VariantOption.OptionValue
                         }).ToList()
                     }).ToList()

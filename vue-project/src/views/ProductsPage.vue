@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { RouterLink } from 'vue-router';
+import { RouterLink, useRouter } from 'vue-router';
 import {
   Search,
   Grid3x3,
@@ -18,9 +18,11 @@ import {
 } from 'lucide-vue-next';
 import { useWishlistStore } from '../stores/Wishlist.js';
 import { productAPI } from '../api/productsApi';
+import { cartApi } from '../api/cartApi';
 
 // Stores
 const wishlistStore = useWishlistStore();
+const router = useRouter();
 
 // State
 const viewMode = ref('grid');
@@ -85,10 +87,19 @@ const handleAddToWishlist = (product, event) => {
   wishlistStore.addToWishlist(product);
 };
 
-const addToCart = (productId, event) => {
+const addToCart = async (productId, event) => {
   event.preventDefault();
   event.stopPropagation();
-  console.log('Added to cart:', productId);
+  console.log('Adding to cart:', productId);
+  
+  try {
+    await cartApi.addToCart(productId, 1);
+    router.push('/cart');
+  } catch (err) {
+    console.error('Failed to add to cart', err);
+    // You might want to show a toast here instead of alert
+    alert('Failed to add item to cart. Please try again.');
+  }
 };
 
 const clearFilters = () => {

@@ -114,7 +114,7 @@ const placeOrder = async () => {
         // Clear cart session on frontend
         cartApi.clearSession()
         
-        router.push('/')
+        router.push(`/order-success/${order.orderId}`)
     } catch (err) {
         console.error('Order error:', err)
         if (err.response?.status === 401) {

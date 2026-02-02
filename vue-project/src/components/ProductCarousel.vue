@@ -1,6 +1,8 @@
 <script setup>
 import { ref, computed } from 'vue';
+import { useRouter } from 'vue-router';
 import { ShoppingBag, Heart, Star, ChevronLeft, ChevronRight } from 'lucide-vue-next';
+import { cartApi } from '../api/cartApi';
 
 const currentIndex = ref(0);
 
@@ -41,12 +43,22 @@ const goToSlide = (index) => {
     currentIndex.value = index;
 };
 
+const router = useRouter();
+
 const addToWishlist = (productId) => {
     console.log('Added to wishlist:', productId);
 };
 
-const addToCart = (productId) => {
-    console.log('Added to cart:', productId);
+const addToCart = async (productId) => {
+    try {
+        await cartApi.addToCart(productId, 1);
+        router.push('/cart');
+    } catch (err) {
+        console.error('Failed to add to cart', err);
+        // Fallback for demo purposes: just redirect if API fails (e.g. invalid ID)
+        // or show error. For now, let's alert.
+        alert('Failed to add demo product to cart. It might not exist in the database.');
+    }
 };
 </script>
 
@@ -65,7 +77,7 @@ const addToCart = (productId) => {
                 >
                     <div class="group bg-white rounded-3xl overflow-hidden shadow-sm hover:shadow-2xl transition-all duration-700 border border-gray-100 h-full">
                         <!-- Product Image -->
-                        <div class="relative overflow-hidden aspect-[4/5] bg-gray-50">
+                        <div class="relative overflow-hidden aspect-4/5 bg-gray-50">
                             <img :src="product.image" :alt="product.name"
                                 class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
                             <!-- Badge -->

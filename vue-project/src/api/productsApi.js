@@ -28,4 +28,31 @@ export const productAPI = {
     async updateStock(id, quantity) {
         return await api.patch(`/products/${id}/stock`, { quantity });
     },
+
+    // Upload single image
+    async uploadImage(file) {
+        const formData = new FormData();
+        formData.append('file', file);
+        return await api.post('/images/upload-single', formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data'
+            }
+        });
+    },
+
+    // Upload multiple images
+    async uploadImages(files) {
+        const formData = new FormData();
+        files.forEach(file => formData.append('files', file));
+        return await api.post('/images/upload', formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data'
+            }
+        });
+    },
+
+    // Delete an image
+    async deleteImage(fileName) {
+        return await api.delete(`/images/${fileName}`);
+    }
 };

@@ -161,6 +161,23 @@ namespace SmallEcommerceApi
             }
 
             // Configure middleware pipeline (order matters!)
+            
+            // Serve static files (product images) from Vue project's public/images folder
+            var vueImagesPath = Path.Combine(
+                Directory.GetParent(app.Environment.ContentRootPath)?.FullName ?? "", 
+                "vue-project", "public", "images");
+            
+            if (!Directory.Exists(vueImagesPath))
+            {
+                Directory.CreateDirectory(vueImagesPath);
+            }
+            
+            app.UseStaticFiles(new StaticFileOptions
+            {
+                FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(vueImagesPath),
+                RequestPath = "/images"
+            });
+
             app.UseCors("AllowVueApp");
             app.UseHttpsRedirection();
             app.UseAuthentication();

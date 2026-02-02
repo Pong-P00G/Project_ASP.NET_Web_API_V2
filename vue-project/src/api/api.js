@@ -17,7 +17,7 @@ api.interceptors.request.use(
         console.log('🚀 Full URL:', config.url)
         console.log('🚀 Method:', config.method)
 
-        const token = localStorage.getItem("accessToken")
+        const token = localStorage.getItem("accessToken") || sessionStorage.getItem("accessToken")
         if (token) {
             console.log('🔑 Adding token to request')
             config.headers.Authorization = `Bearer ${token}`

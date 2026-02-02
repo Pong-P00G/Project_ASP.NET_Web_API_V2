@@ -1,1101 +1,949 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import {
-  Package,
-  Plus,
-  Search,
-  Edit2,
-  Trash2,
-  X,
-  Loader2,
-  Download,
-  Eye,
-  AlertCircle,
-  CheckCircle,
-  DollarSign,
-  RefreshCw,
-  ChevronDown
+  Package, Plus, Search, Edit2, Trash2, X, Loader2, Download, Eye, AlertCircle, CheckCircle, RefreshCw, Tag, DollarSign, Boxes, ArrowUpDown, Upload, Image
 } from 'lucide-vue-next'
-import { productAPI } from '../../api/productsApi.js'
+import { productAPI } from '../../api/productsApi'
+import { useToast } from '../../composables/useToast'
 
-// State
+const toast = useToast()
+
 const products = ref([])
 const loading = ref(false)
-const error = ref(null)
-const success = ref(null)
 const searchTerm = ref('')
 const selectedCategory = ref('all')
-const selectedStock = ref('all')
-const selectedProducts = ref([])
-
-const toggleSelectAll = () => {
-  if (selectedProducts.value.length === filteredProducts.value.length) {
-    selectedProducts.value = []
-  } else {
-    selectedProducts.value = filteredProducts.value.map(p => p.id)
-  }
-}
-
-// Modal states
+const sortBy = ref('name')
+const sortOrder = ref('asc')
 const showAddModal = ref(false)
 const showEditModal = ref(false)
 const showViewModal = ref(false)
 const currentProduct = ref(null)
+const formData = ref({ name: '', description: '', price: 0, stock: 0, category: '', images: [], discount: 0 })
+const categories = ref([])
+const uploadingImage = ref(false)
+const mainImageIndex = ref(0) // Index of the main/primary image
 
-// Form data
-const formData = ref({
-  Images:'',
-  name: '',
-  category: '',
-  description: '',
-  stock: 0,
-  price: 0,
-  sku: '',
-  minStock: 0,
-  supplier: '',
-  variants: [],
-  images: [{ url: '', isMain: true }]
-})
+// Category input
+const selectedCategories = ref([])
+const newCategoryInput = ref('')
 
-const addImage = () => {
-  formData.value.images.push({ url: '', isMain: false })
-}
+// Variant options (dynamic - can add custom)
+const selectedColors = ref([])
+const selectedSizes = ref([])
+const colorOptions = ref([
+  { label: 'Black', value: 'Black' },
+  { label: 'White', value: 'White' },
+  { label: 'Red', value: 'Red' },
+  { label: 'Blue', value: 'Blue' },
+  { label: 'Green', value: 'Green' }
+])
+const sizeOptions = ref([
+  { label: 'XS', value: 'XS' },
+  { label: 'Small (S)', value: 'S' },
+  { label: 'Medium (M)', value: 'M' },
+  { label: 'Large (L)', value: 'L' },
+  { label: 'XL', value: 'XL' },
+  { label: 'XXL', value: 'XXL' }
+])
+const newColorInput = ref('')
+const newSizeInput = ref('')
 
-const removeImage = (index) => {
-  if (formData.value.images[index].isMain && formData.value.images.length > 1) {
-    formData.value.images[0].isMain = true
+// Generate variant combinations
+const generatedVariants = computed(() => {
+  const variants = []
+  const colors = selectedColors.value.length > 0 ? selectedColors.value : [null]
+  const sizes = selectedSizes.value.length > 0 ? selectedSizes.value : [null]
+
+  for (const color of colors) {
+    for (const size of sizes) {
+      const options = []
+      let label = ''
+      if (color) {
+        options.push({ variant: 'Color', value: color })
+        label += color
+      }
+      if (size) {
+        options.push({ variant: 'Size', value: size })
+        label += (label ? ' - ' : '') + size
+      }
+      if (options.length > 0) {
+        variants.push({
+          label: label || 'Default',
+          options
+        })
+      }
+    }
   }
-  formData.value.images.splice(index, 1)
-  if (formData.value.images.length === 0) {
-    addImage()
-    formData.value.images[0].isMain = true
-  }
-}
-
-const setMainImage = (index) => {
-  formData.value.images.forEach((img, i) => (img.isMain = i === index))
-}
-
-const addVariant = () => {
-  formData.value.variants.push({
-    sku: formData.value.sku ? `${formData.value.sku}-${formData.value.variants.length + 1}` : '',
-    price: formData.value.price || 0,
-    stock: formData.value.stock || 0,
-    isCollapsed: false,
-    options: [
-      { variant: 'Color', value: '' },
-      { variant: 'Size', value: '' }
-    ]
-  })
-}
-
-const toggleVariantCollapse = (index) => {
-  formData.value.variants[index].isCollapsed = !formData.value.variants[index].isCollapsed
-}
-
-const removeVariant = (index) => {
-  formData.value.variants.splice(index, 1)
-}
-
-const addOption = (variantIndex) => {
-  formData.value.variants[variantIndex].options.push({ variant: '', value: '' })
-}
-
-const removeOption = (variantIndex, optionIndex) => {
-  formData.value.variants[variantIndex].options.splice(optionIndex, 1)
-}
-
-// Derived categories
-const categories = computed(() => {
-  const set = new Set(products.value.map(p => p.category).filter(Boolean))
-  return Array.from(set)
-})
-
-// Computed properties
-const filteredProducts = computed(() => {
-  let filtered = products.value
-
-  if (searchTerm.value) {
-    const q = searchTerm.value.toLowerCase()
-    filtered = filtered.filter(p =>
-      p.name?.toLowerCase().includes(q) ||
-      p.category?.toLowerCase().includes(q) ||
-      p.sku?.toLowerCase().includes(q)
-    )
-  }
-
-  if (selectedCategory.value !== 'all') {
-    filtered = filtered.filter(p => p.category === selectedCategory.value)
-  }
-
-  if (selectedStock.value === 'in-stock') {
-    filtered = filtered.filter(p => p.stock > 10)
-  } else if (selectedStock.value === 'low-stock') {
-    filtered = filtered.filter(p => p.stock > 0 && p.stock <= 10)
-  } else if (selectedStock.value === 'out-of-stock') {
-    filtered = filtered.filter(p => p.stock === 0)
-  }
-
-  return filtered
+  return variants
 })
 
 const stats = computed(() => ({
   total: products.value.length,
-  inStock: products.value.filter(p => p.stock > 10).length,
-  lowStock: products.value.filter(p => p.stock > 0 && p.stock <= 10).length,
+  active: products.value.filter(p => p.stock > 0).length,
   outOfStock: products.value.filter(p => p.stock === 0).length,
-  totalValue: products.value.reduce((sum, p) => sum + (p.stock * p.price), 0)
+  totalValue: products.value.reduce((sum, p) => sum + (p.price * p.stock), 0)
 }))
 
-// Methods
+const filteredProducts = computed(() => {
+  let filtered = products.value
+  if (searchTerm.value) filtered = filtered.filter(p => p.name.toLowerCase().includes(searchTerm.value.toLowerCase()))
+  if (selectedCategory.value !== 'all') filtered = filtered.filter(p => p.category === selectedCategory.value)
+  return [...filtered].sort((a, b) => {
+    const av = a[sortBy.value], bv = b[sortBy.value];
+    if (typeof av === 'number') return sortOrder.value === 'asc' ? av - bv : bv - av;
+    return sortOrder.value === 'asc' ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av))
+  })
+})
+
 const fetchProducts = async () => {
-    try {
-        loading.value = true
-        error.value = null
-        const res = await productAPI.getAllProducts({ pageSize: 100 }) // Fetch more items
-        
-        products.value = (res.data.items || []).map(p => ({
-            id: p.productId,
-            name: p.productName,
-            category: p.categories?.[0]?.categoryName || 'Uncategorized',
-            description: p.description,
-            stock: p.stock,
-            price: p.basePrice,
-            sku: p.sku,
-            minStock: p.minStock,
-            supplier: p.supplier,
-            images: p.images?.[0]?.imageUrl || ''
-        }))
-    } catch (err) {
-        error.value = err.response?.data?.message || err.message || 'Failed to load products'
-        console.error('Error fetching products:', err)
-    } finally {
-        loading.value = false
-    }
+  try {
+    loading.value = true;
+    const res = await productAPI.getAllProducts({ pageSize: 100 });
+    products.value = (res.data.items || []).map(p => ({
+      id: p.productId,
+      name: p.productName,
+      description: p.description,
+      category: p.categories?.[0]?.categoryName || 'N/A',
+      price: p.basePrice,
+      stock: p.stock,
+      image: p.images?.[0]?.imageUrl || ''
+    }));
+    categories.value = [...new Set(products.value.map(p => p.category))].filter(c => c && c !== 'N/A')
+  } catch (err) { toast.error('Failed to load products') } finally { loading.value = false }
 }
 
 const openAddModal = () => {
-    formData.value = {
-        Images: '',
-        name: '',
-        category: '',
-        description: '',
-        stock: 0,
-        price: 0,
-        sku: '',
-        minStock: 0,
-        supplier: '',
-        variants: [],
-        images: [{ url: '', isMain: true }]
-    }
-    showAddModal.value = true
+  formData.value = { name: '', description: '', price: 0, stock: 0, category: '', images: [], discount: 0 };
+  mainImageIndex.value = 0;
+  selectedColors.value = [];
+  selectedSizes.value = [];
+  selectedCategories.value = [];
+  newCategoryInput.value = '';
+  newColorInput.value = '';
+  newSizeInput.value = '';
+  showAddModal.value = true
 }
-
-const openEditModal = async (product) => {
-    try {
-        loading.value = true
-        const res = await productAPI.getProductsById(product.id)
-        const p = res.data
-        
-        // Map images to objects
-        const mappedImages = (p.images || []).map(img => ({
-            url: img.imageUrl,
-            isMain: img.isPrimary
-        }))
-        
-        if (mappedImages.length === 0) {
-            mappedImages.push({ url: '', isMain: true })
-        }
-
-        currentProduct.value = {
-            id: p.productId,
-            name: p.productName,
-            category: p.categories?.[0]?.categoryName || 'Uncategorized',
-            description: p.description,
-            stock: p.stock,
-            price: p.basePrice,
-            sku: p.sku,
-            minStock: p.minStock,
-            supplier: p.supplier,
-            images: p.images?.[0]?.imageUrl || '', // legacy for table display
-            variants: p.variants || [],
-            imageList: mappedImages
-        }
-        formData.value = { ...currentProduct.value, images: mappedImages }
-        showEditModal.value = true
-    } catch (err) {
-        error.value = 'Failed to fetch product details'
-        console.error(err)
-    } finally {
-        loading.value = false
-    }
+const openEditModal = (p) => {
+  currentProduct.value = p;
+  formData.value = {
+    ...p,
+    images: p.image ? [{ url: p.image, preview: p.image }] : [],
+    discount: p.discount || 0
+  };
+  mainImageIndex.value = 0;
+  selectedCategories.value = p.category && p.category !== 'N/A' ? [p.category] : [];
+  selectedColors.value = [];
+  selectedSizes.value = [];
+  newCategoryInput.value = '';
+  newColorInput.value = '';
+  newSizeInput.value = '';
+  showEditModal.value = true
 }
-
-const openViewModal = async (product) => {
-    try {
-        loading.value = true
-        const res = await productAPI.getProductsById(product.id)
-        const p = res.data
-        currentProduct.value = {
-            id: p.productId,
-            name: p.productName,
-            category: p.categories?.[0]?.categoryName || 'Uncategorized',
-            description: p.description,
-            stock: p.stock,
-            price: p.basePrice,
-            sku: p.sku,
-            minStock: p.minStock,
-            supplier: p.supplier,
-            images: p.images?.[0]?.imageUrl || '',
-            variants: p.variants || []
-        }
-        showViewModal.value = true
-    } catch (err) {
-        error.value = 'Failed to fetch product details'
-        console.error(err)
-    } finally {
-        loading.value = false
-    }
+const openViewModal = (p) => {
+  currentProduct.value = p;
+  showViewModal.value = true
 }
-
 const closeModals = () => {
-    showAddModal.value = false
-    showEditModal.value = false
-    showViewModal.value = false
-    currentProduct.value = null
+  showAddModal.value = false;
+  showEditModal.value = false;
+  showViewModal.value = false;
+  currentProduct.value = null;
+  formData.value.images = [];
+  mainImageIndex.value = 0;
+  selectedColors.value = [];
+  selectedSizes.value = [];
+  selectedCategories.value = [];
+  newCategoryInput.value = '';
+  newColorInput.value = '';
+  newSizeInput.value = '';
+}
+
+// Multi-image upload handler
+const handleImageSelect = async (event) => {
+  const files = Array.from(event.target.files)
+  if (!files.length) return
+
+  const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
+
+  for (const file of files) {
+    // Validate file type
+    if (!allowedTypes.includes(file.type)) {
+      toast.error(`Invalid file type: ${file.name}`)
+      continue
+    }
+
+    // Validate file size (5MB max)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error(`File too large: ${file.name}`)
+      continue
+    }
+
+    // Create local preview first
+    const reader = new FileReader()
+    reader.onload = async (e) => {
+      const tempImage = { preview: e.target.result, url: '', uploading: true }
+      formData.value.images.push(tempImage)
+      const imageIndex = formData.value.images.length - 1
+
+      // Upload image
+      try {
+        uploadingImage.value = true
+        const res = await productAPI.uploadImage(file)
+        formData.value.images[imageIndex].url = res.data.url
+        formData.value.images[imageIndex].uploading = false
+      } catch (err) {
+        toast.error(`Failed to upload: ${file.name}`)
+        formData.value.images.splice(imageIndex, 1)
+      } finally {
+        uploadingImage.value = false
+      }
+    }
+    reader.readAsDataURL(file)
+  }
+
+  // Reset file input
+  event.target.value = ''
+}
+
+// Remove image at index
+const removeImage = (index) => {
+  formData.value.images.splice(index, 1)
+  // Adjust main image index if needed
+  if (mainImageIndex.value >= formData.value.images.length) {
+    mainImageIndex.value = Math.max(0, formData.value.images.length - 1)
+  } else if (index < mainImageIndex.value) {
+    mainImageIndex.value--
+  }
+}
+
+// Set image as main
+const setMainImage = (index) => {
+  mainImageIndex.value = index
+}
+
+// Add custom color
+const addCustomColor = () => {
+  const color = newColorInput.value.trim()
+  if (color && !colorOptions.value.find(c => c.value.toLowerCase() === color.toLowerCase())) {
+    colorOptions.value.push({ label: color, value: color })
+    selectedColors.value.push(color)
+    newColorInput.value = ''
+  }
+}
+
+// Add custom size
+const addCustomSize = () => {
+  const size = newSizeInput.value.trim()
+  if (size && !sizeOptions.value.find(s => s.value.toLowerCase() === size.toLowerCase())) {
+    sizeOptions.value.push({ label: size, value: size })
+    selectedSizes.value.push(size)
+    newSizeInput.value = ''
+  }
+}
+
+// Add custom category
+const addCustomCategory = () => {
+  const category = newCategoryInput.value.trim()
+  if (category && !selectedCategories.value.includes(category)) {
+    selectedCategories.value.push(category)
+    newCategoryInput.value = ''
+  }
+}
+
+// Remove category
+const removeCategory = (category) => {
+  selectedCategories.value = selectedCategories.value.filter(c => c !== category)
 }
 
 const handleAddProduct = async () => {
-    try {
-        loading.value = true
-        error.value = null
+  try {
+    loading.value = true;
 
-        // Prepare image URLs with main image at index 0
-        const mainImg = formData.value.images.find(img => img.isMain) || formData.value.images[0]
-        const otherImgs = formData.value.images.filter(img => img !== mainImg)
-        const imageUrls = [mainImg.url, ...otherImgs.map(img => img.url)].filter(Boolean)
-
-        const payload = {
-            productName: formData.value.name,
-            basePrice: Number(formData.value.price),
-            sku: formData.value.sku,
-            description: formData.value.description || '',
-            stock: Number(formData.value.stock),
-            minStock: Number(formData.value.minStock || 0),
-            supplier: formData.value.supplier || '',
-            categoryNames: [formData.value.category],
-            imageUrls: imageUrls,
-            variants: formData.value.variants.length > 0 
-                ? formData.value.variants.map(v => ({
-                    sku: v.sku,
-                    price: Number(v.price),
-                    stockQuantity: Number(v.stock),
-                    isActive: true,
-                    options: v.options.map(opt => ({
-                        variant: opt.variant,
-                        value: opt.value
-                    }))
-                }))
-                : [{
-                    sku: formData.value.sku + '-STD',
-                    price: Number(formData.value.price),
-                    stockQuantity: Number(formData.value.stock),
-                    isActive: true,
-                    options: [{ variant: 'Standard', value: 'Default' }]
-                }]
-        }
-
-        await productAPI.createProducts(payload)
-
-        // Refetch all products
-        await fetchProducts()
-
-        success.value = 'Product added successfully!'
-        closeModals()
-        setTimeout(() => (success.value = null), 3000)
-    } catch (err) {
-        error.value = err.response?.data?.message || err.response?.data || 'Failed to add product'
-        console.error('Error adding product:', err)
-    } finally {
-        loading.value = false
+    // Generate variants based on selections
+    let variants = [];
+    if (generatedVariants.value.length > 0) {
+      variants = generatedVariants.value.map((v, idx) => ({
+        sku: `SKU-${Date.now()}-${idx}`,
+        price: formData.value.price,
+        stockQuantity: formData.value.stock,
+        isActive: true,
+        options: v.options
+      }));
+    } else {
+      // Default variant if no options selected
+      variants = [{
+        sku: `SKU-${Date.now()}`,
+        price: formData.value.price,
+        stockQuantity: formData.value.stock,
+        isActive: true,
+        options: [{ variant: 'Default', value: 'Standard' }]
+      }];
     }
+
+    // Build image URLs with main image first
+    const imageUrls = formData.value.images.length > 0
+      ? [
+        formData.value.images[mainImageIndex.value]?.url,
+        ...formData.value.images.filter((_, i) => i !== mainImageIndex.value).map(img => img.url)
+      ].filter(Boolean)
+      : [];
+
+    await productAPI.createProducts({
+      productName: formData.value.name,
+      description: formData.value.description,
+      basePrice: formData.value.price,
+      stock: formData.value.stock,
+      imageUrls,
+      categoryNames: selectedCategories.value.length > 0 ? selectedCategories.value : null,
+      variants
+    });
+    await fetchProducts();
+    toast.success('Product added successfully!')
+    closeModals()
+  }
+  catch (err) { toast.error(err.response?.data?.message || 'Failed to add product') }
+  finally { loading.value = false }
 }
 
 const handleUpdateProduct = async () => {
-    try {
-        loading.value = true
-        error.value = null
-
-        // Prepare image URLs with main image at index 0
-        const mainImg = formData.value.images.find(img => img.isMain) || formData.value.images[0]
-        const otherImgs = formData.value.images.filter(img => img !== mainImg)
-        const imageUrls = [mainImg.url, ...otherImgs.map(img => img.url)].filter(Boolean)
-
-        const payload = {
-            productName: formData.value.name,
-            basePrice: Number(formData.value.price),
-            sku: formData.value.sku,
-            description: formData.value.description || '',
-            stock: Number(formData.value.stock),
-            minStock: Number(formData.value.minStock || 0),
-            supplier: formData.value.supplier || '',
-            imageUrls: imageUrls // Backend needs to be updated to handle this
-        }
-
-        await productAPI.updateProducts(currentProduct.value.id, payload)
-
-        // Refetch all products
-        await fetchProducts()
-
-        success.value = 'Product updated successfully!'
-        closeModals()
-        setTimeout(() => (success.value = null), 3000)
-    } catch (err) {
-        error.value = err.response?.data?.message || err.response?.data || 'Failed to update product'
-        console.error('Error updating product:', err)
-    } finally {
-        loading.value = false
-    }
-}
-
-const handleDeleteProduct = async (id) => {
-  if (!confirm('Are you sure you want to delete this product? This action cannot be undone.')) return
-
   try {
-    loading.value = true
-    error.value = null
-    await productAPI.hardDelete(id)
-    products.value = products.value.filter(p => p.id !== id)
-    success.value = 'Product deleted successfully!'
-    setTimeout(() => (success.value = null), 3000)
+    loading.value = true;
+
+    // Generate variants payload (only if user added/changed variants)
+    let variants = null;
+    if (generatedVariants.value.length > 0) {
+      variants = generatedVariants.value.map((v, idx) => ({
+        sku: `SKU-${Date.now()}-${idx}`,
+        price: formData.value.price,
+        stockQuantity: formData.value.stock,
+        isActive: true,
+        options: v.options.map(opt => ({
+          variant: opt.variant,
+          value: opt.value
+        }))
+      }));
+    }
+
+    // Build image URLs with main image first
+    const imageUrls = formData.value.images.length > 0
+      ? [
+        formData.value.images[mainImageIndex.value]?.url,
+        ...formData.value.images.filter((_, i) => i !== mainImageIndex.value).map(img => img.url)
+      ].filter(Boolean)
+      : [];
+
+    await productAPI.updateProducts(currentProduct.value.id, {
+      productName: formData.value.name,
+      description: formData.value.description,
+      basePrice: formData.value.price,
+      stock: formData.value.stock,
+      imageUrls,
+      categoryNames: selectedCategories.value.length > 0 ? selectedCategories.value : null,
+      variants
+    });
+    await fetchProducts();
+    toast.success('Product updated successfully!')
+    closeModals()
   } catch (err) {
-    error.value = err.response?.data?.message || err.response?.data || 'Failed to delete product'
-    console.error('Error deleting product:', err)
+    toast.error(err.response?.data?.message || 'Failed to update product')
   } finally {
     loading.value = false
   }
 }
 
+const handleDeleteProduct = async (id) => {
+  if (!confirm('Delete this product?')) return
+  try {
+    loading.value = true;
+    await productAPI.hardDelete(id);
+    products.value = products.value.filter(p => p.id !== id);
+    toast.success('Product deleted successfully!')
+  }
+  catch (err) { toast.error('Failed to delete product') }
+  finally { loading.value = false }
+}
+
+const toggleSort = (f) => {
+  if (sortBy.value === f) sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc';
+  else { sortBy.value = f; sortOrder.value = 'asc' }
+}
 const exportToCSV = () => {
-  const headers = ['ID', 'SKU', 'Name', 'Category', 'Stock', 'Price', 'Min Stock', 'Supplier']
-  const rows = products.value.map(p => [
-    p.id,
-    p.sku,
-    p.name,
-    p.category,
-    p.stock,
-    p.price,
-    p.minStock || 0,
-    p.supplier || ''
-  ])
-  const csv = [headers, ...rows].map(r => r.join(',')).join('\n')
-  const blob = new Blob([csv], { type: 'text/csv' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `products-${new Date().toISOString().split('T')[0]}.csv`
-  a.click()
-  URL.revokeObjectURL(url)
+  const csv = [['ID', 'Name', 'Category', 'Price', 'Stock'],
+  ...products.value.map(p => [p.id, p.name, p.category, p.price, p.stock])].map(r => r.join(',')).join('\n');
+  const b = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'products.csv'; a.click()
 }
 
-const getStockStatus = (product) => {
-  if (product.stock === 0) return { text: 'Out of Stock', color: 'red' }
-  if (product.stock <= (product.minStock || 10)) return { text: 'Low Stock', color: 'orange' }
-  return { text: 'In Stock', color: 'green' }
-}
-
-onMounted(() => {
-  fetchProducts()
-})
+onMounted(fetchProducts)
 
 </script>
 
 <template>
-  <div class="min-h-screen bg-slate-50/50">
-    <!-- Error Banner -->
-    <Transition name="slide-down">
-      <div v-if="error" class="fixed top-8 left-1/2 -translate-x-1/2 z-[100] w-full max-w-2xl px-6">
-        <div class="bg-white border border-rose-100 rounded-[32px] p-6 shadow-2xl shadow-rose-200/50 flex items-center gap-6">
-          <div class="w-14 h-14 bg-rose-50 rounded-2xl flex items-center justify-center shrink-0">
-            <AlertCircle class="w-7 h-7 text-rose-500" />
+  <div class="w-full">
+    <div class="flex flex-wrap items-center justify-between gap-4 mb-8">
+      <div>
+        <div
+          class="inline-flex items-center gap-2 px-3 py-1.5 bg-neutral-900 rounded-full text-white text-xs font-semibold mb-2">
+          <Package class="w-3.5 h-3.5" /><span>Product Management</span>
+        </div>
+        <h1 class="text-2xl font-bold text-neutral-900">Products</h1>
+        <p class="text-neutral-500 text-sm">Manage your product catalog</p>
+      </div>
+      <div class="flex gap-3">
+        <button @click="fetchProducts" :disabled="loading"
+          class="flex items-center gap-2 px-5 py-2.5 bg-white border border-neutral-200 rounded-xl text-sm font-semibold text-neutral-600 hover:bg-neutral-50">
+          <RefreshCw class="w-4 h-4" :class="{ 'animate-spin': loading }" />Sync
+        </button>
+        <button @click="openAddModal"
+          class="flex items-center gap-2 px-5 py-2.5 bg-neutral-900 rounded-xl text-sm font-semibold text-white hover:bg-neutral-800">
+          <Plus class="w-4 h-4" />New
+        </button>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+      <div
+        class="bg-white rounded-2xl p-5 border border-neutral-200 hover:-translate-y-1 hover:shadow-lg transition-all">
+        <div class="flex items-center gap-4">
+          <div class="w-12 h-12 flex items-center justify-center bg-neutral-900 rounded-xl text-white">
+            <Package class="w-5 h-5" />
           </div>
-          <div class="flex-1">
-            <p class="text-sm font-black text-slate-900 uppercase tracking-widest">System Error</p>
-            <p class="text-xs text-slate-500 mt-1 font-bold leading-relaxed">{{ error }}</p>
-          </div>
-          <div class="flex items-center gap-3">
-            <button @click="error = null; fetchProducts()" class="p-3 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-all shadow-sm">
-              <RefreshCw class="w-5 h-5" />
-            </button>
-            <button @click="error = null" class="p-3 bg-slate-100 text-slate-400 rounded-xl hover:bg-slate-200 transition-all">
-              <X class="w-5 h-5" />
-            </button>
+          <div>
+            <p class="text-[10px] font-bold text-neutral-400 uppercase">Total</p>
+            <h3 class="text-2xl font-bold text-neutral-900">{{ stats.total }}</h3>
           </div>
         </div>
       </div>
-    </Transition>
-
-    <!-- Success Message -->
-    <Transition name="slide-down">
-      <div v-if="success" class="fixed top-8 right-8 z-[100] max-w-md">
-        <div class="bg-slate-900 border border-slate-800 text-white px-8 py-5 rounded-[24px] shadow-2xl flex items-center gap-4">
-          <div class="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center shrink-0">
-            <CheckCircle class="w-6 h-6 text-white" />
+      <div
+        class="bg-white rounded-2xl p-5 border border-neutral-200 hover:-translate-y-1 hover:shadow-lg transition-all">
+        <div class="flex items-center gap-4">
+          <div class="w-12 h-12 flex items-center justify-center bg-green-500 rounded-xl text-white">
+            <Boxes class="w-5 h-5" />
           </div>
-          <span class="flex-1 font-bold text-sm tracking-tight">{{ success }}</span>
-          <button @click="success = null" class="text-slate-400 hover:text-white transition-colors p-1">
-            <X class="w-5 h-5" />
+          <div>
+            <p class="text-[10px] font-bold text-neutral-400 uppercase">In Stock</p>
+            <h3 class="text-2xl font-bold text-neutral-900">{{ stats.active }}</h3>
+          </div>
+        </div>
+      </div>
+      <div
+        class="bg-white rounded-2xl p-5 border border-neutral-200 hover:-translate-y-1 hover:shadow-lg transition-all">
+        <div class="flex items-center gap-4">
+          <div class="w-12 h-12 flex items-center justify-center bg-red-500 rounded-xl text-white">
+            <AlertCircle class="w-5 h-5" />
+          </div>
+          <div>
+            <p class="text-[10px] font-bold text-neutral-400 uppercase">Out of Stock</p>
+            <h3 class="text-2xl font-bold text-neutral-900">{{ stats.outOfStock }}</h3>
+          </div>
+        </div>
+      </div>
+      <div
+        class="bg-white rounded-2xl p-5 border border-neutral-200 hover:-translate-y-1 hover:shadow-lg transition-all">
+        <div class="flex items-center gap-4">
+          <div class="w-12 h-12 flex items-center justify-center bg-orange-500 rounded-xl text-white">
+            <DollarSign class="w-5 h-5" />
+          </div>
+          <div>
+            <p class="text-[10px] font-bold text-neutral-400 uppercase">Value</p>
+            <h3 class="text-2xl font-bold text-neutral-900">${{ stats.totalValue.toLocaleString() }}</h3>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-2xl border border-neutral-200 overflow-hidden">
+      <div
+        class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 p-5 bg-neutral-50 border-b border-neutral-100">
+        <div class="relative flex-1 max-w-sm">
+          <Search class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" /><input
+            v-model="searchTerm" type="text" placeholder="Search..."
+            class="w-full pl-10 pr-4 py-3 bg-white border border-neutral-200 rounded-xl text-sm focus:border-orange-500 outline-none" />
+        </div>
+        <div class="flex flex-wrap gap-3">
+          <select v-model="selectedCategory"
+            class="px-4 py-3 bg-white border border-neutral-200 rounded-xl text-xs font-semibold text-neutral-600">
+            <option value="all">All</option>
+            <option v-for="c in categories" :key="c" :value="c">{{ c }}</option>
+          </select>
+          <button @click="exportToCSV"
+            class="flex items-center gap-2 px-4 py-3 bg-neutral-900 text-white rounded-xl text-xs font-semibold">
+            <Download class="w-4 h-4" />Export
           </button>
         </div>
       </div>
-    </Transition>
 
-    <!-- Header -->
-    <header class="bg-white border-b border-slate-100 sticky top-0 z-40">
-      <div class="max-w-[1600px] mx-auto px-6 sm:px-8 lg:px-12 py-8">
-        <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-8">
-          <div class="flex items-center gap-6">
-            <div class="w-16 h-16 bg-slate-900 rounded-[24px] flex items-center justify-center shadow-xl shadow-slate-200">
-              <Package class="w-8 h-8 text-white" />
+      <div v-if="loading && products.length === 0" class="p-8 space-y-3">
+        <div v-for="i in 5" :key="i" class="h-16 bg-neutral-100 rounded-xl animate-pulse"></div>
+      </div>
+      <div v-else-if="filteredProducts.length === 0" class="flex flex-col items-center py-16 text-center">
+        <div class="w-20 h-20 flex items-center justify-center bg-neutral-100 rounded-2xl text-neutral-400 mb-6">
+          <Package class="w-10 h-10" />
+        </div>
+        <h3 class="text-xl font-bold text-neutral-800 mb-2">No Products</h3>
+        <p class="text-neutral-500 text-sm mb-6">Adjust filters or add new</p><button @click="openAddModal"
+          class="flex items-center gap-2 px-6 py-3 bg-neutral-900 rounded-xl text-sm font-semibold text-white">
+          <Plus class="w-4 h-4" />Add
+        </button>
+      </div>
+
+      <div class="lg:hidden grid grid-cols-1 sm:grid-cols-2 gap-4 p-4">
+        <div v-for="p in filteredProducts" :key="p.id"
+          class="bg-neutral-50 rounded-xl p-5 hover:bg-neutral-100 transition-colors">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-14 h-14 rounded-xl overflow-hidden bg-white shadow-sm"><img v-if="p.image" :src="p.image"
+                class="w-full h-full object-cover" />
+              <div v-else class="w-full h-full flex items-center justify-center text-neutral-300">
+                <Package class="w-6 h-6" />
+              </div>
             </div>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-bold text-neutral-800 truncate">{{ p.name }}</p><span
+                class="inline-block text-[10px] font-semibold text-orange-600 bg-orange-100 px-2 py-0.5 rounded mt-1">{{
+                  p.category }}</span>
+            </div>
+          </div>
+          <div class="flex justify-between items-center mb-4">
             <div>
-              <h1 class="text-3xl font-black text-slate-900 tracking-tight">Products</h1>
-              <p class="text-sm text-slate-400 mt-1 font-bold uppercase tracking-widest">Inventory Control</p>
+              <p class="text-[10px] text-neutral-400 uppercase">Price</p>
+              <p class="text-lg font-bold text-neutral-800">${{ p.price }}</p>
+            </div>
+            <div class="text-right">
+              <p class="text-[10px] text-neutral-400 uppercase">Stock</p>
+              <p :class="['text-lg font-bold', p.stock > 0 ? 'text-green-600' : 'text-red-600']">{{ p.stock }}</p>
             </div>
           </div>
-          <div class="flex items-center gap-3">
-            <button @click="fetchProducts"
-              class="flex items-center gap-3 px-6 py-3.5 text-sm font-black text-slate-700 bg-white border-2 border-slate-100 rounded-2xl hover:bg-slate-50 transition-all active:scale-95 disabled:opacity-50"
-              :disabled="loading">
-              <RefreshCw :class="['w-5 h-5', loading && 'animate-spin']" />
-              <span>{{ loading ? 'Syncing...' : 'Refresh' }}</span>
-            </button>
-            <button @click="openAddModal"
-              class="flex items-center gap-3 px-8 py-4 bg-blue-600 text-white rounded-[20px] hover:bg-blue-700 transition-all shadow-xl shadow-blue-200 active:scale-95 font-black text-sm uppercase tracking-widest">
-              <Plus class="w-5 h-5" />
-              New Product
-            </button>
-          </div>
-        </div>
-      </div>
-    </header>
-
-    <main class="max-w-[1600px] mx-auto px-6 sm:px-8 lg:px-12 py-12">
-      <!-- Stats Cards -->
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8 mb-12">
-        <div v-for="(stat, idx) in [
-          { label: 'Inventory', value: stats.total, icon: Package, color: 'blue', bg: 'bg-blue-50', text: 'text-blue-600' },
-          { label: 'Healthy', value: stats.inStock, icon: CheckCircle, color: 'emerald', bg: 'bg-emerald-50', text: 'text-emerald-600' },
-          { label: 'Low Stock', value: stats.lowStock, icon: AlertCircle, color: 'amber', bg: 'bg-amber-50', text: 'text-amber-600' },
-          { label: 'Critical', value: stats.outOfStock, icon: X, color: 'rose', bg: 'bg-rose-50', text: 'text-rose-600' },
-          { label: 'Asset Value', value: '$' + stats.totalValue.toLocaleString(), icon: DollarSign, color: 'slate', bg: 'bg-slate-900', text: 'text-white' }
-        ]" :key="idx" 
-          class="bg-white rounded-[32px] p-8 border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
-          <div class="flex items-center justify-between mb-6">
-            <div :class="`w-14 h-14 ${stat.bg} rounded-2xl flex items-center justify-center transition-transform group-hover:rotate-12` ">
-              <component :is="stat.icon" :class="`w-7 h-7 ${stat.text}`" />
-            </div>
-          </div>
-          <p class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{{ stat.label }}</p>
-          <p class="text-3xl font-black text-slate-900 mt-2 tracking-tight">{{ stat.value }}</p>
+          <div class="flex gap-2"><button @click="openViewModal(p)"
+              class="flex-1 py-2 bg-white border border-neutral-200 rounded-lg text-xs font-semibold text-neutral-600 flex items-center justify-center gap-1">
+              <Eye class="w-3.5 h-3.5" />View
+            </button><button @click="openEditModal(p)"
+              class="flex-1 py-2 bg-neutral-900 rounded-lg text-xs font-semibold text-white flex items-center justify-center gap-1">
+              <Edit2 class="w-3.5 h-3.5" />Edit
+            </button></div>
         </div>
       </div>
 
-      <!-- Actions Bar -->
-      <div class="bg-white rounded-[40px] shadow-sm mb-12 p-8 border border-slate-100">
-        <div class="flex flex-col lg:flex-row gap-6">
-          <!-- Search -->
-          <div class="flex-1">
-            <div class="relative group">
-              <Search class="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300 w-6 h-6 group-focus-within:text-blue-600 transition-colors" />
-              <input v-model="searchTerm" type="text"
-                placeholder="Find product by name, category or SKU..."
-                class="w-full pl-16 pr-6 py-4.5 bg-slate-50 border-2 border-transparent rounded-[24px] focus:bg-white focus:border-blue-100 focus:ring-4 focus:ring-blue-50 transition-all font-bold text-slate-600" />
-            </div>
-          </div>
-
-          <!-- Filters -->
-          <div class="flex flex-wrap gap-4">
-            <select v-model="selectedCategory"
-              class="px-8 py-4.5 bg-slate-50 border-2 border-transparent rounded-[24px] focus:bg-white focus:border-blue-100 transition-all font-black text-xs uppercase tracking-widest text-slate-700 outline-none cursor-pointer">
-              <option value="all">Categories</option>
-              <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
-            </select>
-
-            <select v-model="selectedStock"
-              class="px-8 py-4.5 bg-slate-50 border-2 border-transparent rounded-[24px] focus:bg-white focus:border-blue-100 transition-all font-black text-xs uppercase tracking-widest text-slate-700 outline-none cursor-pointer">
-              <option value="all">Stock Levels</option>
-              <option value="in-stock">In Stock</option>
-              <option value="low-stock">Low Stock</option>
-              <option value="out-of-stock">Critical</option>
-            </select>
-
-            <button @click="exportToCSV"
-              class="flex items-center gap-3 px-8 py-4.5 bg-slate-50 text-slate-700 rounded-[24px] hover:bg-slate-100 transition-all font-black text-xs uppercase tracking-widest active:scale-95">
-              <Download class="w-5 h-5" />
-              Export
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Products Table -->
-      <div class="bg-white rounded-[48px] shadow-sm overflow-hidden border border-slate-100">
-        <div v-if="loading && products.length === 0" class="p-20 space-y-8">
-          <div v-for="i in 5" :key="i" class="flex items-center gap-8 animate-pulse">
-            <div class="w-20 h-20 bg-slate-100 rounded-3xl"></div>
-            <div class="flex-1 space-y-4">
-              <div class="h-6 bg-slate-100 rounded-lg w-1/3"></div>
-              <div class="h-4 bg-slate-100 rounded-lg w-1/4"></div>
-            </div>
-          </div>
-        </div>
-
-        <div v-else-if="filteredProducts.length === 0" class="text-center py-32">
-          <div class="w-32 h-32 bg-slate-50 rounded-[40px] flex items-center justify-center mx-auto mb-8">
-            <Package class="w-16 h-16 text-slate-200" />
-          </div>
-          <h3 class="text-2xl font-black text-slate-900 tracking-tight">No results found</h3>
-          <p class="text-slate-400 mt-2 font-bold max-w-sm mx-auto">We couldn't find any products matching your current search or filter criteria.</p>
-          <button @click="searchTerm = ''; selectedCategory = 'all'; selectedStock = 'all'"
-            class="mt-8 px-10 py-4 bg-slate-900 text-white rounded-[20px] font-black uppercase tracking-widest text-xs hover:bg-slate-800 transition-all active:scale-95">
-            Reset Filters
-          </button>
-        </div>
-
-        <div v-else>
-          <!-- Mobile View (Cards) -->
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 lg:hidden">
-            <div v-for="product in filteredProducts" :key="product.id" 
-              class="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm flex flex-col gap-4 relative overflow-hidden group">
-              
-              <!-- Selection & ID -->
-              <div class="flex items-center justify-between">
-                <div class="flex items-center gap-3">
-                  <input type="checkbox" :value="product.id" v-model="selectedProducts"
-                    class="w-4 h-4 rounded-lg border-slate-300 text-blue-600 focus:ring-blue-500/20" />
-                  <span class="font-mono text-[10px] font-black text-slate-400 bg-slate-100 px-2 py-1 rounded-lg">#{{ product.id }}</span>
+      <table class="hidden lg:table w-full">
+        <thead>
+          <tr class="bg-neutral-50/50">
+            <th class="px-6 py-4 text-left"><button @click="toggleSort('name')"
+                class="flex items-center gap-1.5 text-[10px] font-bold text-neutral-400 uppercase hover:text-orange-500">Product
+                <ArrowUpDown class="w-3 h-3" />
+              </button></th>
+            <th class="px-6 py-4 text-left text-[10px] font-bold text-neutral-400 uppercase">Category</th>
+            <th class="px-6 py-4 text-left"><button @click="toggleSort('price')"
+                class="flex items-center gap-1.5 text-[10px] font-bold text-neutral-400 uppercase hover:text-orange-500">Price
+                <ArrowUpDown class="w-3 h-3" />
+              </button></th>
+            <th class="px-6 py-4 text-left"><button @click="toggleSort('stock')"
+                class="flex items-center gap-1.5 text-[10px] font-bold text-neutral-400 uppercase hover:text-orange-500">Stock
+                <ArrowUpDown class="w-3 h-3" />
+              </button></th>
+            <th class="px-6 py-4 text-right text-[10px] font-bold text-neutral-400 uppercase">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="p in filteredProducts" :key="p.id"
+            class="border-b border-neutral-50 hover:bg-neutral-50/50 transition-colors group">
+            <td class="px-6 py-4">
+              <div class="flex items-center gap-3">
+                <div class="w-11 h-11 rounded-xl overflow-hidden bg-neutral-100 shadow-sm"><img v-if="p.image"
+                    :src="p.image" class="w-full h-full object-cover" />
+                  <div v-else class="w-full h-full flex items-center justify-center text-neutral-300">
+                    <Package class="w-5 h-5" />
+                  </div>
                 </div>
-                <div class="flex gap-1">
-                   <button @click="openUpdateModal(product)" class="p-2 text-slate-400 hover:text-blue-600 bg-slate-50 rounded-lg">
-                      <Edit2 class="w-4 h-4" />
-                   </button>
-                   <button @click="handleDeleteProduct(product.id)" class="p-2 text-slate-400 hover:text-rose-600 bg-slate-50 rounded-lg">
-                      <Trash2 class="w-4 h-4" />
-                   </button>
+                <div>
+                  <p class="text-sm font-semibold text-neutral-800">{{ p.name }}</p>
+                  <p class="text-xs text-neutral-500 max-w-[200px] truncate">{{ p.description || 'No description' }}</p>
                 </div>
               </div>
+            </td>
+            <td class="px-6 py-4"><span
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-semibold bg-orange-100 text-orange-600">
+                <Tag class="w-3 h-3" />{{ p.category }}
+              </span></td>
+            <td class="px-6 py-4 text-sm font-bold text-neutral-800">${{ p.price }}</td>
+            <td class="px-6 py-4"><span
+                :class="['px-3 py-1 rounded-full text-[10px] font-bold uppercase', p.stock > 10 ? 'bg-green-100 text-green-600' : p.stock > 0 ? 'bg-orange-100 text-orange-600' : 'bg-red-100 text-red-600']">{{
+                  p.stock }} units</span></td>
+            <td class="px-6 py-4">
+              <div class="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100"><button
+                  @click="openViewModal(p)"
+                  class="p-2 rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600">
+                  <Eye class="w-4 h-4" />
+                </button><button @click="openEditModal(p)"
+                  class="p-2 rounded-lg text-neutral-400 hover:bg-orange-100 hover:text-orange-600">
+                  <Edit2 class="w-4 h-4" />
+                </button><button @click="handleDeleteProduct(p.id)"
+                  class="p-2 rounded-lg text-neutral-400 hover:bg-red-100 hover:text-red-600">
+                  <Trash2 class="w-4 h-4" />
+                </button></div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
 
-              <!-- Content -->
-              <div class="flex gap-4">
-                <div class="w-20 h-20 rounded-xl bg-slate-50 flex items-center justify-center shrink-0 border border-slate-100">
-                   <img v-if="product.images" :src="product.images" class="w-full h-full object-cover rounded-xl" />
-                   <Package v-else class="w-8 h-8 text-slate-300" />
-                </div>
-                <div class="min-w-0 flex-1">
-                   <p class="text-sm font-bold text-slate-900 line-clamp-2 leading-tight">{{ product.name }}</p>
-                   <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1">{{ product.category }}</p>
-                   <p class="text-[10px] font-mono text-slate-400">{{ product.sku || 'NO-SKU' }}</p>
-                </div>
-              </div>
-
-              <!-- Stats -->
-              <div class="grid grid-cols-2 gap-2">
-                 <div class="bg-slate-50 p-3 rounded-xl border border-slate-100/50">
-                    <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Price</p>
-                    <p class="text-base font-black text-slate-900">${{ product.price.toFixed(2) }}</p>
-                 </div>
-                 <div class="bg-slate-50 p-3 rounded-xl border border-slate-100/50">
-                    <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Stock</p>
-                    <div class="flex items-center gap-2">
-                       <span :class="`w-2 h-2 rounded-full ${getStockStatus(product).color === 'green' ? 'bg-emerald-500' : getStockStatus(product).color === 'orange' ? 'bg-amber-500' : 'bg-rose-500'}`"></span>
-                       <p :class="`text-base font-black ${getStockStatus(product).color === 'green' ? 'text-emerald-700' : getStockStatus(product).color === 'orange' ? 'text-amber-700' : 'text-rose-700'}`">{{ product.stock }}</p>
-                    </div>
-                 </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Desktop View (Table) -->
-          <div class="hidden lg:block overflow-x-auto px-4">
-            <table class="w-full border-separate border-spacing-y-4">
-              <thead>
-                <tr>
-                  <th class="px-8 py-6 text-left text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Product Info</th>
-                  <th class="px-8 py-6 text-left text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">SKU</th>
-                  <th class="px-8 py-6 text-left text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Category</th>
-                  <th class="px-8 py-6 text-left text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Inventory</th>
-                  <th class="px-8 py-6 text-left text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Price</th>
-                  <th class="px-8 py-6 text-right text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="product in filteredProducts" :key="product.id"
-                  class="group hover:bg-slate-50 transition-all duration-300 rounded-[32px]">
-                  <td class="px-8 py-6 first:rounded-l-[32px]">
-                    <div class="flex items-center gap-6">
-                      <div class="w-20 h-20 rounded-[28px] bg-white shadow-sm border border-slate-100 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform duration-500 overflow-hidden">
-                        <img v-if="product.images" :src="product.images" class="w-full h-full object-cover" />
-                        <Package v-else class="w-8 h-8 text-slate-200" />
-                      </div>
-                      <div class="min-w-0">
-                        <p class="text-lg font-black text-slate-900 truncate tracking-tight">{{ product.name }}</p>
-                        <p class="text-xs font-bold text-slate-400 truncate mt-1 leading-relaxed">{{ product.description || 'No description provided' }}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td class="px-8 py-6">
-                    <span class="font-mono text-sm font-black text-slate-500 tracking-wider bg-slate-100 px-3 py-1.5 rounded-xl uppercase">{{ product.sku }}</span>
-                  </td>
-                  <td class="px-8 py-6">
-                    <div class="inline-flex items-center gap-2 px-4 py-2 bg-slate-50 text-slate-700 rounded-2xl text-[10px] font-black uppercase tracking-widest border border-slate-100/50">
-                      {{ product.category }}
-                    </div>
-                  </td>
-                  <td class="px-8 py-6">
-                    <div class="flex items-center gap-4">
-                      <div class="w-24 h-2.5 bg-slate-100 rounded-full overflow-hidden shrink-0">
-                        <div class="h-full transition-all duration-1000"
-                          :class="{
-                            'bg-rose-500': getStockStatus(product).color === 'red',
-                            'bg-amber-500': getStockStatus(product).color === 'orange',
-                            'bg-emerald-500': getStockStatus(product).color === 'green'
-                          }"
-                          :style="{ width: Math.min((product.stock / 100) * 100, 100) + '%' }">
-                        </div>
-                      </div>
-                      <span class="text-xs font-black uppercase tracking-tighter"
-                        :class="{
-                          'text-rose-600': getStockStatus(product).color === 'red',
-                          'text-amber-600': getStockStatus(product).color === 'orange',
-                          'text-emerald-600': getStockStatus(product).color === 'green'
-                        }">
-                        {{ product.stock }} Qty
-                      </span>
-                    </div>
-                  </td>
-                  <td class="px-8 py-6 text-lg font-black text-slate-900 tracking-tight">${{ product.price.toFixed(2) }}</td>
-                  <td class="px-8 py-6 last:rounded-r-[32px]">
-                    <div class="flex justify-end gap-3">
-                      <button @click="openViewModal(product)"
-                        class="p-3.5 text-slate-400 hover:text-slate-900 hover:bg-white hover:shadow-lg rounded-2xl transition-all active:scale-90 border border-transparent hover:border-slate-100">
-                        <Eye class="w-5 h-5" />
-                      </button>
-                      <button @click="openEditModal(product)"
-                        class="p-3.5 text-slate-400 hover:text-blue-600 hover:bg-white hover:shadow-lg rounded-2xl transition-all active:scale-90 border border-transparent hover:border-slate-100">
-                        <Edit2 class="w-5 h-5" />
-                      </button>
-                      <button @click="handleDeleteProduct(product.id)"
-                        class="p-3.5 text-slate-400 hover:text-rose-600 hover:bg-white hover:shadow-lg rounded-2xl transition-all active:scale-90 border border-transparent hover:border-slate-100">
-                        <Trash2 class="w-5 h-5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </main>
-
-    <!-- Form Modal -->
     <Teleport to="body">
       <Transition name="modal">
         <div v-if="showAddModal || showEditModal"
-          class="fixed inset-0 bg-slate-900/60 backdrop-blur-xl flex items-center justify-center z-[100] p-6"
+          class="fixed inset-0 bg-linear-to-br from-black/70 via-black/60 to-neutral-900/70 backdrop-blur-md flex items-center justify-center p-4 z-50"
           @click.self="closeModals">
-          <div class="bg-white rounded-[48px] shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col scale-100 transition-transform">
-            <div class="p-10 border-b border-slate-50 flex justify-between items-center shrink-0">
-              <div class="flex items-center gap-6">
-                <div class="w-14 h-14 bg-slate-900 rounded-2xl flex items-center justify-center">
-                  <Package class="w-7 h-7 text-white" />
+
+          <!-- Modal Container -->
+          <div
+            class="bg-white rounded-2xl sm:rounded-3xl w-full max-w-4xl shadow-2xl overflow-hidden animate-modalSlideIn max-h-[95vh] sm:max-h-[90vh] flex flex-col">
+
+            <!-- Two Column Layout -->
+            <div class="flex flex-col lg:flex-row min-h-0 flex-1 overflow-hidden">
+
+              <!-- Left Column: Image Section -->
+              <div
+                class="lg:w-2/5 bg-linear-to-br from-neutral-900 via-neutral-800 to-neutral-900 p-4 sm:p-6 lg:p-8 flex flex-col relative overflow-hidden shrink-0 lg:min-h-[500px]">
+                <!-- Decorative Elements -->
+                <div class="absolute top-0 right-0 w-64 h-64 bg-orange-500/10 rounded-full blur-3xl"></div>
+                <div class="absolute bottom-0 left-0 w-48 h-48 bg-orange-500/5 rounded-full blur-2xl"></div>
+
+                <!-- Header -->
+                <div class="relative z-10 mb-4 lg:mb-6">
+                  <div
+                    class="inline-flex items-center gap-2 px-3 py-1.5 bg-white/10 backdrop-blur-sm rounded-full mb-4">
+                    <div class="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></div>
+                    <span class="text-[10px] font-bold text-white/80 uppercase tracking-wider">{{ showAddModal ?'NewProduct' : 'Editing' }}</span>
+                  </div>
+                  <h2 class="text-xl sm:text-2xl font-bold text-white mb-1">{{ showAddModal ? 'Create Product' :'UpdateProduct' }}</h2>
+                  <p class="text-sm text-white/50">{{ showAddModal ? 'Add a new item to your catalog' :'Makechangestoyour product' }}</p>
                 </div>
-                <div>
-                  <h3 class="text-3xl font-black text-slate-900 tracking-tight">
-                    {{ showAddModal ? 'Create Product' : 'Edit Product' }}
-                  </h3>
-                  <p class="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mt-1">Configure your product data</p>
+                <!-- Multi-Image Upload Area -->
+                <div class="flex-1 relative z-10 flex flex-col">
+                  <label class="block text-[10px] font-bold text-white/40 uppercase tracking-wider mb-3">Product Images
+                    <span class="text-orange-400">({{ formData.images.length }})</span></label>
+
+                  <!-- Main Image Display -->
+                  <div v-if="formData.images.length > 0" class="mb-3">
+                    <div class="relative rounded-2xl overflow-hidden bg-white/5 aspect-video">
+                      <img :src="formData.images[mainImageIndex]?.preview || formData.images[mainImageIndex]?.url"
+                        class="w-full h-full object-cover" alt="Main image" />
+                      <div v-if="formData.images[mainImageIndex]?.uploading"
+                        class="absolute inset-0 bg-black/50 flex items-center justify-center">
+                        <Loader2 class="w-8 h-8 animate-spin text-orange-500" />
+                      </div>
+                      <div
+                        class="absolute top-2 left-2 px-2 py-1 bg-orange-500/90 text-white text-[10px] font-bold rounded-lg">
+                        MAIN</div>
+                    </div>
+                  </div>
+
+                  <!-- Thumbnail Gallery -->
+                  <div v-if="formData.images.length > 0" class="grid grid-cols-4 gap-2 mb-3">
+                    <div v-for="(img, idx) in formData.images" :key="idx"
+                      class="relative aspect-square rounded-lg overflow-hidden cursor-pointer group"
+                      :class="idx === mainImageIndex ? 'ring-2 ring-orange-500' : 'ring-1 ring-white/20'"
+                      @click="setMainImage(idx)">
+                      <img :src="img.preview || img.url" class="w-full h-full object-cover" />
+                      <div v-if="img.uploading" class="absolute inset-0 bg-black/50 flex items-center justify-center">
+                        <Loader2 class="w-4 h-4 animate-spin text-white" />
+                      </div>
+                      <button @click.stop="removeImage(idx)" type="button"
+                        class="absolute top-1 right-1 p-1 bg-black/60 rounded-full opacity-0 group-hover:opacity-100 hover:bg-red-500 transition-all">
+                        <X class="w-3 h-3 text-white" />
+                      </button>
+                      <div v-if="idx === mainImageIndex"
+                        class="absolute bottom-1 left-1 px-1 py-0.5 bg-orange-500 text-white text-[8px] font-bold rounded">
+                        ★</div>
+                    </div>
+                  </div>
+
+                  <!-- Upload Button -->
+                  <div
+                    class="border-2 border-dashed border-white/20 rounded-xl p-4 flex items-center justify-center cursor-pointer hover:border-orange-500/50 hover:bg-white/5 transition-all group"
+                    @click="$refs.fileInput.click()">
+                    <input ref="fileInput" type="file" accept="image/*" multiple class="hidden"
+                      @change="handleImageSelect" />
+                    <Upload class="w-5 h-5 text-white/40 group-hover:text-orange-400 mr-2" />
+                    <span class="text-sm text-white/50 group-hover:text-white/70">Add images</span>
+                  </div>
+
+                  <p v-if="formData.images.length > 0" class="text-[10px] text-white/30 mt-2 text-center">Click
+                    thumbnail to set as main</p>
                 </div>
+
+                <!-- Close button for mobile -->
+                <button @click="closeModals"
+                  class="lg:hidden absolute top-4 right-4 p-2 bg-white/10 rounded-xl text-white/70 hover:bg-white/20">
+                  <X class="w-5 h-5" />
+                </button>
               </div>
-              <button @click="closeModals" class="p-4 hover:bg-slate-50 rounded-2xl transition-all active:rotate-90 duration-300">
-                <X class="w-7 h-7 text-slate-400" />
-              </button>
-            </div>
 
-            <div class="p-10 overflow-y-auto grow custom-scrollbar">
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-10">
-                <div class="space-y-8">
-                  <div class="group">
-                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1 group-focus-within:text-blue-600 transition-colors">Identification</label>
-                    <div class="space-y-4">
-                      <input v-model="formData.name" type="text" required
-                        class="w-full px-6 py-4.5 bg-slate-50 border-2 border-transparent rounded-[20px] focus:bg-white focus:border-blue-100 transition-all font-bold text-slate-700 outline-none"
-                        placeholder="Product Name" />
-                      <input v-model="formData.sku" type="text" required
-                        class="w-full px-6 py-4.5 bg-slate-50 border-2 border-transparent rounded-[20px] focus:bg-white focus:border-blue-100 transition-all font-mono font-bold text-slate-700 outline-none uppercase tracking-wider"
-                        placeholder="SKU Code" />
+              <!-- Right Column: Form Section -->
+              <div class="lg:w-3/5 flex flex-col min-h-0 overflow-hidden">
+                <!-- Form Header -->
+                <div class="hidden lg:flex items-center justify-between p-6 border-b border-neutral-100">
+                  <div class="flex items-center gap-3">
+                    <div
+                      class="w-10 h-10 flex items-center justify-center bg-linear-to-br from-orange-500 to-orange-600 rounded-xl text-white shadow-lg shadow-orange-500/25">
+                      <Package class="w-5 h-5" />
                     </div>
-                  </div>
-
-                  <div class="group">
-                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Classification</label>
-                    <div class="space-y-4">
-                      <input v-model="formData.category" type="text" required
-                        class="w-full px-6 py-4.5 bg-slate-50 border-2 border-transparent rounded-[20px] focus:bg-white focus:border-blue-100 transition-all font-bold text-slate-700 outline-none"
-                        placeholder="Category" />
-                      <input v-model="formData.supplier" type="text"
-                        class="w-full px-6 py-4.5 bg-slate-50 border-2 border-transparent rounded-[20px] focus:bg-white focus:border-blue-100 transition-all font-bold text-slate-700 outline-none"
-                        placeholder="Supplier Name" />
-                    </div>
-                  </div>
-
-                  <div class="group">
-                    <div class="flex items-center justify-between mb-3 ml-1">
-                      <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest group-focus-within:text-blue-600 transition-colors">Visual Assets</label>
-                      <button type="button" @click="addImage" class="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline">+ Add URL</button>
-                    </div>
-                    <div class="space-y-4">
-                      <div v-for="(img, idx) in formData.images" :key="idx" 
-                        class="flex items-center gap-4 group/img relative bg-slate-50 p-3 rounded-2xl border-2 border-transparent focus-within:border-blue-100 transition-all">
-                        <div class="w-12 h-12 rounded-xl bg-white border border-slate-100 flex items-center justify-center overflow-hidden shrink-0">
-                          <img v-if="img.url" :src="img.url" class="w-full h-full object-cover" />
-                          <Plus v-else class="w-4 h-4 text-slate-300" />
-                        </div>
-                        <input v-model="img.url" type="text"
-                          class="flex-1 bg-transparent border-none focus:ring-0 font-bold text-slate-700 placeholder:text-slate-300 text-xs py-2"
-                          placeholder="Image URL" />
-                        
-                        <div class="flex items-center gap-2">
-                          <label :for="'main-' + idx" 
-                            class="flex items-center gap-2 cursor-pointer px-3 py-1.5 rounded-lg transition-all"
-                            :class="img.isMain ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' : 'bg-white text-slate-400 hover:bg-slate-100'">
-                            <input type="radio" :id="'main-' + idx" name="main-image" :checked="img.isMain" @change="setMainImage(idx)" class="hidden" />
-                            <span class="text-[9px] font-black uppercase tracking-tighter">{{ img.isMain ? 'Main' : 'Set Main' }}</span>
-                          </label>
-                          <button @click="removeImage(idx)" v-if="formData.images.length > 1"
-                            class="p-2 text-slate-300 hover:text-rose-500 transition-colors">
-                            <X class="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="space-y-8">
-                  <div class="group">
-                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Inventory & Value</label>
-                    <div class="grid grid-cols-2 gap-4">
-                      <div class="space-y-2">
-                        <p class="text-[9px] font-bold text-slate-400 ml-1">PRICE ($)</p>
-                        <input v-model.number="formData.price" type="number" step="0.01" min="0" required
-                          class="w-full px-6 py-4.5 bg-slate-50 border-2 border-transparent rounded-[20px] focus:bg-white focus:border-blue-100 transition-all font-black text-slate-900 outline-none" />
-                      </div>
-                      <div class="space-y-2">
-                        <p class="text-[9px] font-bold text-slate-400 ml-1">TOTAL STOCK</p>
-                        <input v-model.number="formData.stock" type="number" min="0" required
-                          class="w-full px-6 py-4.5 bg-slate-50 border-2 border-transparent rounded-[20px] focus:bg-white focus:border-blue-100 transition-all font-black text-slate-900 outline-none" />
-                      </div>
-                    </div>
-                    <div class="mt-4">
-                      <p class="text-[9px] font-bold text-slate-400 ml-1 mb-2">MINIMUM ALERT LEVEL</p>
-                      <input v-model.number="formData.minStock" type="number" min="0"
-                        class="w-full px-6 py-4.5 bg-slate-50 border-2 border-transparent rounded-[20px] focus:bg-white focus:border-blue-100 transition-all font-black text-slate-900 outline-none" />
-                    </div>
-                  </div>
-
-                  <div class="group">
-                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Description</label>
-                    <textarea v-model="formData.description" rows="6"
-                      class="w-full px-6 py-5 bg-slate-50 border-2 border-transparent rounded-[24px] focus:bg-white focus:border-blue-100 transition-all font-bold text-slate-700 outline-none resize-none"
-                      placeholder="Provide detailed information about this product..."></textarea>
-                  </div>
-                </div>
-
-                <!-- Variants Section -->
-                <div v-if="showAddModal" class="md:col-span-2 space-y-12 mt-8 border-t border-slate-100/50 pt-12">
-                  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
                     <div>
-                      <h4 class="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-3">
-                        <Plus class="w-6 h-6 text-blue-500" />
-                        Product Variants
-                      </h4>
-                      <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1.5 ml-9">Configure multiple versions (Color, Size, etc.)</p>
+                      <h3 class="text-base font-bold text-neutral-800">Product Details</h3>
+                      <p class="text-[10px] font-medium text-neutral-400">Fill in the information below</p>
                     </div>
-                    <button type="button" @click="addVariant"
-                      class="flex items-center gap-3 px-8 py-4 bg-slate-900 text-white rounded-2xl hover:bg-slate-800 transition-all font-black text-xs uppercase tracking-widest shadow-xl shadow-slate-200 active:scale-95">
-                      <Plus class="w-5 h-5" />
-                      Init New Variant
+                  </div>
+                  <button @click="closeModals"
+                    class="p-2 rounded-xl text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 transition-colors">
+                    <X class="w-5 h-5" />
+                  </button>
+                </div>
+
+                <!-- Form Content -->
+                <div class="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 sm:space-y-5">
+
+                  <!-- Product Name -->
+                  <div class="group">
+                    <label
+                      class="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-2 group-focus-within:text-orange-500 transition-colors">
+                      Product Name <span class="text-red-400">*</span>
+                    </label>
+                    <div class="relative">
+                      <input v-model="formData.name" type="text"
+                        class="w-full px-4 py-3.5 bg-neutral-50 border-2 border-neutral-100 rounded-xl text-sm font-medium text-neutral-800 placeholder-neutral-400 focus:bg-white focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 outline-none transition-all duration-200"
+                        placeholder="Enter product name" />
+                    </div>
+                  </div>
+
+                  <!-- Description -->
+                  <div class="group">
+                    <label
+                      class="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-2 group-focus-within:text-orange-500 transition-colors">
+                      Description
+                    </label>
+                    <textarea v-model="formData.description" rows="3"
+                      class="w-full px-4 py-3.5 bg-neutral-50 border-2 border-neutral-100 rounded-xl text-sm font-medium text-neutral-800 placeholder-neutral-400 focus:bg-white focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 outline-none resize-none transition-all duration-200"
+                      placeholder="Describe your product..."></textarea>
+                  </div>
+
+                  <!-- Categories Section -->
+                  <div class="group">
+                    <label
+                      class="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-2 group-focus-within:text-orange-500 transition-colors">
+                      Categories
+                    </label>
+                    <div class="flex flex-wrap gap-2 mb-2">
+                      <span v-for="cat in selectedCategories" :key="cat"
+                        class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-orange-100 text-orange-700 rounded-lg text-xs font-semibold">
+                        {{ cat }}
+                        <button @click="removeCategory(cat)" type="button" class="hover:text-orange-900">
+                          <X class="w-3 h-3" />
+                        </button>
+                      </span>
+                    </div>
+                    <div class="flex gap-2">
+                      <input v-model="newCategoryInput" type="text"
+                        class="flex-1 px-4 py-2.5 bg-neutral-50 border-2 border-neutral-100 rounded-xl text-sm font-medium text-neutral-800 placeholder-neutral-400 focus:bg-white focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 outline-none transition-all duration-200"
+                        placeholder="Type category name..." @keyup.enter="addCustomCategory" />
+                      <button @click="addCustomCategory" type="button"
+                        class="px-4 py-2.5 bg-orange-500 text-white rounded-xl text-sm font-bold hover:bg-orange-600 transition-colors">
+                        <Plus class="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Price, Stock, and Discount Row -->
+                  <div class="grid grid-cols-3 gap-3">
+                    <div class="group">
+                      <label
+                        class="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-2 group-focus-within:text-orange-500 transition-colors">
+                        Price <span class="text-red-400">*</span>
+                      </label>
+                      <div class="relative">
+                        <div class="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400 font-bold">$</div>
+                        <input v-model.number="formData.price" type="number" min="0" step="0.01"
+                          class="w-full pl-8 pr-4 py-3.5 bg-neutral-50 border-2 border-neutral-100 rounded-xl text-sm font-bold text-neutral-800 focus:bg-white focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 outline-none transition-all duration-200"
+                          placeholder="0.00" />
+                      </div>
+                    </div>
+                    <div class="group">
+                      <label
+                        class="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-2 group-focus-within:text-orange-500 transition-colors">
+                        Discount
+                      </label>
+                      <div class="relative">
+                        <input v-model.number="formData.discount" type="number" min="0" max="100" step="1"
+                          class="w-full pl-4 pr-8 py-3.5 bg-neutral-50 border-2 border-neutral-100 rounded-xl text-sm font-bold text-neutral-800 focus:bg-white focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 outline-none transition-all duration-200"
+                          placeholder="0" />
+                        <div class="absolute right-4 top-1/2 -translate-y-1/2 text-neutral-400 font-bold">%</div>
+                      </div>
+                    </div>
+                    <div class="group">
+                      <label
+                        class="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-2 group-focus-within:text-orange-500 transition-colors">
+                        Stock
+                      </label>
+                      <div class="relative">
+                        <Boxes class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+                        <input v-model.number="formData.stock" type="number" min="0"
+                          class="w-full pl-10 pr-4 py-3.5 bg-neutral-50 border-2 border-neutral-100 rounded-xl text-sm font-bold text-neutral-800 focus:bg-white focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 outline-none transition-all duration-200"
+                          placeholder="0" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Variants Section -->
+                  <div class="pt-4">
+                    <div class="flex items-center gap-3 mb-4">
+                      <div class="h-px flex-1 bg-linear-to-r from-transparent via-neutral-200 to-transparent"></div>
+                      <span class="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Variants</span>
+                      <div class="h-px flex-1 bg-linear-to-r from-transparent via-neutral-200 to-transparent"></div>
+                    </div>
+
+                    <!-- Color Options -->
+                    <div class="mb-4">
+                      <p class="text-xs font-bold text-neutral-600 mb-3 flex items-center gap-2">
+                        <span class="w-4 h-4 rounded-full bg-linear-to-r from-red-500 via-black to-white"></span>
+                        Colors
+                      </p>
+                      <div class="flex flex-wrap gap-2 mb-2">
+                        <label v-for="color in colorOptions" :key="color.value"
+                          class="relative flex items-center gap-2.5 px-4 py-2.5 rounded-xl cursor-pointer transition-all duration-200 border-2"
+                          :class="selectedColors.includes(color.value)
+                            ? 'bg-neutral-900 text-white border-neutral-900 shadow-lg'
+                            : 'bg-white text-neutral-700 border-neutral-200 hover:border-neutral-300 hover:shadow-md'">
+                          <input type="checkbox" :value="color.value" v-model="selectedColors" class="hidden" />
+                          <span class="w-4 h-4 rounded-full shadow-inner border-2" :style="{
+                            backgroundColor: color.value.toLowerCase(),
+                            borderColor: selectedColors.includes(color.value) ? 'white' : (color.value === 'White' ? '#e5e5e5' : color.value.toLowerCase())
+                            }">
+                          <span class="w-4 h-4 rounded-full bg-linear-to-r from-red-500 via-black to-white"></span>
+                          </span>
+                          <span class="text-xs font-semibold">{{ color.label }}</span>
+                          <CheckCircle v-if="selectedColors.includes(color.value)"
+                            class="w-3.5 h-3.5 text-orange-400 absolute -top-1 -right-1" />
+                        </label>
+                      </div>
+                      <!-- Add Custom Color -->
+                      <div class="flex gap-2 mt-2">
+                        <input v-model="newColorInput" type="text"
+                          class="flex-1 px-3 py-2 bg-neutral-50 border-2 border-neutral-100 rounded-lg text-xs font-medium text-neutral-800 placeholder-neutral-400 focus:bg-white focus:border-orange-500 outline-none transition-all"
+                          placeholder="Add custom color..." @keyup.enter="addCustomColor" />
+                        <button @click="addCustomColor" type="button"
+                          class="px-3 py-2 bg-neutral-100 text-neutral-600 rounded-lg text-xs font-bold hover:bg-neutral-200 transition-colors">
+                          <Plus class="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <!-- Size Options -->
+                    <div class="mb-4">
+                      <p class="text-xs font-bold text-neutral-600 mb-3 flex items-center gap-2">
+                        <span
+                          class="flex items-center justify-center w-4 h-4 bg-neutral-200 rounded text-[8px] font-black">S</span>
+                        Sizes
+                      </p>
+                      <div class="flex flex-wrap gap-2 mb-2">
+                        <label v-for="size in sizeOptions" :key="size.value"
+                          class="relative flex items-center justify-center min-w-[60px] px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200 border-2"
+                          :class="selectedSizes.includes(size.value)
+                            ? 'bg-linear-to-r from-orange-500 to-orange-600 text-white border-orange-500 shadow-lg shadow-orange-500/25'
+                            : 'bg-white text-neutral-700 border-neutral-200 hover:border-neutral-300 hover:shadow-md'">
+                          <input type="checkbox" :value="size.value" v-model="selectedSizes" class="hidden" />
+                          <span class="text-xs font-bold">{{ size.label }}</span>
+                        </label>
+                      </div>
+                      <!-- Add Custom Size -->
+                      <div class="flex gap-2 mt-2">
+                        <input v-model="newSizeInput" type="text"
+                          class="flex-1 px-3 py-2 bg-neutral-50 border-2 border-neutral-100 rounded-lg text-xs font-medium text-neutral-800 placeholder-neutral-400 focus:bg-white focus:border-orange-500 outline-none transition-all"
+                          placeholder="Add custom size..." @keyup.enter="addCustomSize" />
+                        <button @click="addCustomSize" type="button"
+                          class="px-3 py-2 bg-neutral-100 text-neutral-600 rounded-lg text-xs font-bold hover:bg-neutral-200 transition-colors">
+                          <Plus class="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <!-- Generated Variants Preview -->
+                    <Transition name="fade">
+                      <div v-if="generatedVariants.length > 0"
+                        class="p-4 bg-linear-to-br from-neutral-50 to-neutral-100/50 rounded-2xl border border-neutral-200/50">
+                        <div class="flex items-center justify-between mb-3">
+                          <p class="text-[10px] font-bold text-neutral-500 uppercase tracking-wider">Generated Variants
+                          </p>
+                          <span class="px-2 py-0.5 bg-orange-500 text-white text-[10px] font-bold rounded-full">{{
+                            generatedVariants.length }}</span>
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                          <span v-for="(variant, idx) in generatedVariants" :key="idx"
+                            class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-neutral-200 rounded-lg text-[11px] font-semibold text-neutral-700 shadow-sm">
+                            <span class="w-1.5 h-1.5 bg-orange-500 rounded-full"></span>
+                            {{ variant.label }}
+                          </span>
+                        </div>
+                      </div>
+                    </Transition>
+                  </div>
+
+                </div>
+
+                <!-- Form Footer -->
+                <div class="p-4 sm:p-6 bg-linear-to-t from-neutral-50 to-white border-t border-neutral-100 shrink-0">
+                  <div class="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                    <button @click="closeModals"
+                      class="flex-1 py-3 sm:py-3.5 bg-white border-2 border-neutral-200 rounded-xl text-sm font-bold text-neutral-600 hover:bg-neutral-50 hover:border-neutral-300 transition-all duration-200 order-2 sm:order-1">
+                      Cancel
+                    </button>
+                    <button @click="showAddModal ? handleAddProduct() : handleUpdateProduct()"
+                      :disabled="loading || !formData.name || !formData.price"
+                      class="flex-1 py-3 sm:py-3.5 bg-linear-to-r from-neutral-900 to-neutral-800 rounded-xl text-sm font-bold text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 hover:from-neutral-800 hover:to-neutral-700 transition-all duration-200 shadow-lg shadow-neutral-900/20 order-1 sm:order-2">
+                      <Loader2 v-if="loading" class="w-4 h-4 animate-spin" />
+                      <Plus v-else class="w-4 h-4" />
+                      {{ loading ? 'Processing...' : (showAddModal ? 'Create' : 'Save') }}
                     </button>
                   </div>
-
-                  <div v-if="formData.variants.length > 0" class="grid grid-cols-1 gap-8">
-                    <TransitionGroup name="list">
-                      <div v-for="(variant, vIdx) in formData.variants" :key="vIdx" 
-                        class="bg-white rounded-[40px] border-2 border-slate-100/50 relative group/variant hover:border-blue-100 hover:shadow-2xl hover:shadow-blue-50/50 transition-all duration-500 overflow-hidden">
-                        
-                        <!-- Header / Toggle -->
-                        <div @click="toggleVariantCollapse(vIdx)" 
-                          class="p-8 cursor-pointer flex items-center justify-between hover:bg-slate-50 transition-colors">
-                          <div class="flex items-center gap-5">
-                            <div class="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center text-white text-xs font-black shrink-0">
-                              {{ vIdx + 1 }}
-                            </div>
-                            <div>
-                              <h5 class="text-sm font-black text-slate-900 uppercase tracking-widest leading-none">
-                                {{ variant.sku || 'N/A' }} 
-                                <span class="text-blue-500 ml-2">{{ variant.price ? '$' + variant.price : '' }}</span>
-                              </h5>
-                              <div v-if="variant.isCollapsed" class="flex flex-wrap gap-2 mt-2">
-                                <span v-for="opt in variant.options" :key="opt.variant" 
-                                  class="px-2 py-0.5 bg-slate-100 text-[9px] font-bold text-slate-500 rounded uppercase">
-                                  {{ opt.variant }}: {{ opt.value || '?' }}
-                                </span>
-                              </div>
-                              <p v-else class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Expanding Configuration</p>
-                            </div>
-                          </div>
-                          
-                          <div class="flex items-center gap-3">
-                            <button @click.stop="removeVariant(vIdx)" 
-                              class="p-2.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all mr-2">
-                              <Trash2 class="w-4 h-4" />
-                            </button>
-                            <div class="p-2.5 rounded-xl border border-slate-100 text-slate-400 transition-transform duration-300"
-                              :class="{ 'rotate-180': !variant.isCollapsed }">
-                              <ChevronDown class="w-4 h-4" />
-                            </div>
-                          </div>
-                        </div>
-
-                        <div v-if="!variant.isCollapsed" class="p-10 pt-0 relative z-10">
-                          <!-- Background Accent -->
-                          <div class="absolute top-0 right-0 w-32 h-32 bg-blue-50/50 rounded-bl-[100px] -mr-16 -mt-16 group-hover/variant:scale-150 transition-transform duration-700 pointer-events-none"></div>
-
-                          <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12 mt-4">
-                            <div class="space-y-3">
-                              <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Unique SKU</label>
-                              <div class="relative group/input">
-                                <input v-model="variant.sku" type="text"
-                                  class="w-full px-6 py-4.5 bg-slate-50 border-2 border-transparent rounded-[20px] focus:bg-white focus:border-blue-100 transition-all font-mono font-bold text-slate-700 outline-none uppercase text-sm tracking-wider"
-                                  placeholder="SKU-CODE" />
-                              </div>
-                            </div>
-                            <div class="space-y-3">
-                              <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Price Adjust ($)</label>
-                              <div class="relative">
-                                <span class="absolute left-6 top-1/2 -translate-y-1/2 font-black text-slate-300">$</span>
-                                <input v-model.number="variant.price" type="number" step="0.01"
-                                  class="w-full pl-12 pr-6 py-4.5 bg-slate-50 border-2 border-transparent rounded-[20px] focus:bg-white focus:border-blue-100 transition-all font-black text-slate-900 outline-none" />
-                              </div>
-                            </div>
-                            <div class="space-y-3">
-                              <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Available Qty</label>
-                              <input v-model.number="variant.stock" type="number"
-                                class="w-full px-6 py-4.5 bg-slate-50 border-2 border-transparent rounded-[20px] focus:bg-white focus:border-blue-100 transition-all font-black text-slate-900 outline-none" />
-                            </div>
-                          </div>
-
-                          <div class="space-y-6">
-                            <div class="flex items-center justify-between px-1">
-                              <div>
-                                <p class="text-[11px] font-black text-slate-900 uppercase tracking-[0.2em]">Attributes</p>
-                                <p class="text-[10px] font-bold text-slate-400 mt-1">Define properties like Color or Size</p>
-                              </div>
-                              <button @click="addOption(vIdx)" 
-                                class="flex items-center gap-2 px-5 py-2.5 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-all font-black text-[10px] uppercase tracking-widest active:scale-95">
-                                <Plus class="w-3.5 h-3.5" />
-                                Add Attribute
-                              </button>
-                            </div>
-                            
-                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                              <div v-for="(opt, oIdx) in variant.options" :key="oIdx" 
-                                class="flex gap-4 items-end bg-white border border-slate-100 p-5 rounded-[28px] shadow-sm hover:shadow-md transition-all">
-                                <div class="flex-1 space-y-2">
-                                  <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Attribute Type</p>
-                                  <select v-model="opt.variant"
-                                    class="w-full px-4 py-3 bg-slate-50 border-2 border-transparent rounded-xl focus:bg-white focus:border-blue-50 transition-all font-bold text-slate-700 text-xs outline-none cursor-pointer">
-                                    <option value="" disabled>Select Type</option>
-                                    <option value="Color">Color</option>
-                                    <option value="Size">Size</option>
-                                    <option value="Material">Material</option>
-                                    <option value="Style">Style</option>
-                                    <option value="Weight">Weight</option>
-                                    <option value="Dimensions">Dimensions</option>
-                                  </select>
-                                </div>
-                                <div class="flex-1 space-y-2">
-                                  <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Value</p>
-                                  <input v-model="opt.value" type="text"
-                                    class="w-full px-4 py-3 bg-slate-50 border-2 border-transparent rounded-xl focus:bg-white focus:border-blue-50 transition-all font-bold text-slate-700 text-xs outline-none"
-                                    placeholder="e.g. Matte Black" />
-                                </div>
-                                <button @click="removeOption(vIdx, oIdx)" 
-                                  class="p-3.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all">
-                                  <X class="w-4 h-4" />
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </TransitionGroup>
-                  </div>
-                  
-                  <div v-else class="py-20 border-4 border-dashed border-slate-50 rounded-[48px] text-center flex flex-col items-center group cursor-pointer hover:border-blue-100 hover:bg-blue-50/10 transition-all" @click="addVariant">
-                    <div class="w-20 h-20 bg-slate-50 rounded-[28px] flex items-center justify-center mb-6 group-hover:scale-110 transition-transform group-hover:rotate-12">
-                      <Package class="w-10 h-10 text-slate-200 group-hover:text-blue-200" />
-                    </div>
-                    <p class="text-xl font-black text-slate-900 tracking-tight">No variants defined</p>
-                    <p class="text-sm font-bold text-slate-400 mt-2 max-w-xs mx-auto">Click "Init New Variant" to start building your product matrix.</p>
-                  </div>
                 </div>
-              </div>
-            </div>
 
-            <div class="p-10 border-t border-slate-50 bg-slate-50/50 flex gap-4 shrink-0">
-              <button @click="closeModals"
-                class="px-10 py-5 bg-white border-2 border-slate-200 text-slate-700 rounded-[20px] hover:bg-slate-50 transition-all font-black text-xs uppercase tracking-widest">
-                Discard Changes
-              </button>
-              <button @click="showAddModal ? handleAddProduct() : handleUpdateProduct()"
-                :disabled="loading || !formData.name || !formData.sku || !formData.category"
-                class="flex-1 bg-slate-900 text-white py-5 rounded-[20px] hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 shadow-xl shadow-slate-200">
-                <Loader2 v-if="loading" class="w-5 h-5 animate-spin" />
-                <span>{{ loading ? 'Processing...' : (showAddModal ? 'Confirm Creation' : 'Update Record') }}</span>
-              </button>
+              </div>
             </div>
           </div>
         </div>
       </Transition>
-    </Teleport>
-
-    <!-- View Modal -->
-    <Teleport to="body">
       <Transition name="modal">
         <div v-if="showViewModal && currentProduct"
-          class="fixed inset-0 bg-slate-900/60 backdrop-blur-xl flex items-center justify-center z-[100] p-6"
+          class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-6 z-50"
           @click.self="closeModals">
-          <div class="bg-white rounded-[48px] shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col scale-100 transition-transform">
-            <div class="relative h-96 bg-slate-900 shrink-0 overflow-hidden">
-              <div v-if="currentProduct.imageList && currentProduct.imageList.length > 0" class="absolute inset-0">
-                <img :src="currentProduct.selectedViewImage || (currentProduct.imageList.find(img => img.isMain) || currentProduct.imageList[0]).url" 
-                  class="w-full h-full object-cover opacity-80 transition-all duration-700" />
-                <div class="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/20 to-transparent"></div>
-              </div>
-
-              <!-- Thumbnails Overlay -->
-              <div class="absolute bottom-10 left-10 right-10 flex flex-col gap-6">
-                 <div class="flex flex-wrap gap-3 overflow-x-auto pb-4 scrollbar-hide">
-                    <div v-for="(img, idx) in currentProduct.imageList" :key="idx" 
-                      @click="currentProduct.selectedViewImage = img.url"
-                      class="w-16 h-16 rounded-2xl border-2 cursor-pointer transition-all overflow-hidden shrink-0 shadow-2xl"
-                      :class="currentProduct.selectedViewImage === img.url || (!currentProduct.selectedViewImage && img.isMain) ? 'border-blue-500 scale-110' : 'border-white/20 hover:border-white/60'">
-                      <img :src="img.url" class="w-full h-full object-cover" />
-                    </div>
-                 </div>
-
-                 <div class="flex justify-between items-end">
-                  <div>
-                    <span class="px-3 py-1 bg-blue-600 text-white rounded-lg text-[9px] font-black uppercase tracking-widest mb-3 inline-block shadow-lg shadow-blue-500/30">
-                      {{ currentProduct.category }}
-                    </span>
-                    <h3 class="text-4xl font-black text-white tracking-tight leading-none drop-shadow-lg">{{ currentProduct.name }}</h3>
-                  </div>
-                  <div class="text-right">
-                    <p class="text-xs font-bold text-slate-300 uppercase tracking-widest drop-shadow-md">Pricing</p>
-                    <p class="text-3xl font-black text-white mt-1 tracking-tight drop-shadow-lg">${{ currentProduct.price.toFixed(2) }}</p>
-                  </div>
-                </div>
-              </div>
-
-              <button @click="closeModals" class="absolute top-8 right-8 p-3 bg-white/10 hover:bg-white/20 text-white rounded-2xl backdrop-blur-md transition-all z-10">
-                <X class="w-6 h-6" />
+          <div class="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden">
+            <div class="relative h-48 bg-neutral-900"><button @click="closeModals"
+                class="absolute top-4 right-4 p-2 bg-white/10 rounded-lg text-white/70 hover:bg-white/20">
+                <X class="w-5 h-5" />
               </button>
+              <div v-if="currentProduct.image" class="w-full h-full"><img :src="currentProduct.image"
+                  class="w-full h-full object-cover" /></div>
+              <div v-else class="w-full h-full flex items-center justify-center text-white/50">
+                <Package class="w-16 h-16" />
+              </div>
             </div>
-
-            <div class="p-10">
-              <div class="grid grid-cols-3 gap-8 mb-10">
-                <div class="bg-slate-50 p-6 rounded-3xl border border-slate-100/50">
-                  <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Inventory Status</p>
-                  <div class="flex items-center gap-3 mt-2">
-                    <div :class="`w-3 h-3 rounded-full ${getStockStatus(currentProduct).color === 'green' ? 'bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.5)]' : getStockStatus(currentProduct).color === 'orange' ? 'bg-amber-500 shadow-[0_0_12px_rgba(245,158,11,0.5)]' : 'bg-rose-500 shadow-[0_0_12px_rgba(244,63,94,0.5)]'}`"></div>
-                    <p class="text-lg font-black text-slate-900 tracking-tight">{{ currentProduct.stock }} <span class="text-xs font-bold text-slate-500">Units</span></p>
-                  </div>
+            <div class="p-6"><span
+                class="inline-block text-[10px] font-semibold text-orange-600 bg-orange-100 px-2 py-1 rounded mb-2">{{
+                  currentProduct.category }}</span>
+              <h3 class="text-xl font-bold text-neutral-800 mb-2">{{ currentProduct.name }}</h3>
+              <p class="text-sm text-neutral-500 mb-6">{{ currentProduct.description || 'No description' }}</p>
+              <div class="grid grid-cols-2 gap-4 mb-6">
+                <div class="bg-neutral-50 rounded-xl p-4 text-center">
+                  <p class="text-[10px] font-bold text-neutral-400 uppercase mb-1">Price</p>
+                  <p class="text-2xl font-bold text-neutral-800">${{ currentProduct.price }}</p>
                 </div>
-                <div class="bg-slate-50 p-6 rounded-3xl border border-slate-100/50">
-                  <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Identification</p>
-                  <p class="text-lg font-black text-slate-900 mt-2 tracking-widest font-mono">{{ currentProduct.sku }}</p>
-                </div>
-                <div class="bg-slate-50 p-6 rounded-3xl border border-slate-100/50">
-                  <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Total Asset Value</p>
-                  <p class="text-lg font-black text-blue-600 mt-2 tracking-tight">${{ (currentProduct.stock * currentProduct.price).toFixed(2) }}</p>
+                <div class="bg-neutral-50 rounded-xl p-4 text-center">
+                  <p class="text-[10px] font-bold text-neutral-400 uppercase mb-1">Stock</p>
+                  <p :class="['text-2xl font-bold', currentProduct.stock > 0 ? 'text-green-600' : 'text-red-600']">{{
+                    currentProduct.stock }}</p>
                 </div>
               </div>
-
-              <div v-if="currentProduct.variants && currentProduct.variants.length > 0" class="mt-12 space-y-6">
-                <div class="flex items-center justify-between px-1">
-                  <p class="text-[11px] font-black text-slate-900 uppercase tracking-[0.2em]">Live Variants</p>
-                  <span class="px-3 py-1 bg-blue-50 text-blue-600 rounded-lg text-[9px] font-black uppercase tracking-widest">
-                    {{ currentProduct.variants.length }} Versions
-                  </span>
-                </div>
-                
-                <div class="grid grid-cols-1 gap-4">
-                  <div v-for="variant in currentProduct.variants" :key="variant.productVariantId" 
-                    class="bg-white border-2 border-slate-50 p-6 rounded-[32px] hover:border-blue-100 transition-all group/vitem">
-                    <div class="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                      <div class="flex items-center gap-5">
-                        <div class="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center border border-slate-100 group-hover/vitem:bg-blue-50 group-hover/vitem:border-blue-100 transition-colors">
-                          <Package class="w-5 h-5 text-slate-400 group-hover/vitem:text-blue-500" />
-                        </div>
-                        <div>
-                          <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1.5">SKU: {{ variant.sku }}</p>
-                          <div class="flex flex-wrap gap-2">
-                            <div v-for="opt in variant.options" :key="opt.variant" 
-                              class="px-3 py-1.5 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold text-slate-600 flex items-center gap-2">
-                              <span class="text-slate-400 uppercase tracking-tighter">{{ opt.variant }}:</span>
-                              <span class="text-slate-900">{{ opt.value }}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div class="flex items-center gap-4 bg-slate-50/50 p-2 rounded-[20px] border border-slate-50">
-                        <div class="px-5 py-3 bg-white rounded-2xl shadow-sm border border-slate-100 text-center min-w-[100px]">
-                          <p class="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Price</p>
-                          <p class="text-sm font-black text-slate-900">${{ variant.price.toFixed(2) }}</p>
-                        </div>
-                        <div class="px-5 py-3 bg-white rounded-2xl shadow-sm border border-slate-100 text-center min-w-[100px]">
-                          <p class="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Global Stock</p>
-                          <p class="text-sm font-black text-blue-600">{{ variant.stockQuantity }} <span class="text-[9px] font-bold text-slate-400">Qty</span></p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="space-y-4 mt-8">
-                <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Product Description</p>
-                <div class="bg-slate-50/50 p-8 rounded-[32px] border border-slate-100/50 min-h-[120px]">
-                  <p class="text-slate-600 font-bold leading-relaxed italic">
-                    "{{ currentProduct.description || 'This product does not have a detailed description yet.' }}"
-                  </p>
-                </div>
-              </div>
-
-              <div class="flex gap-4 mt-12">
-                <button @click="closeModals"
-                  class="px-10 py-5 bg-white border-2 border-slate-100 text-slate-700 rounded-[20px] hover:bg-slate-50 transition-all font-black text-xs uppercase tracking-widest">
-                  Back to List
-                </button>
-                <button @click="openEditModal(currentProduct); showViewModal = false"
-                  class="flex-1 bg-slate-900 text-white py-5 rounded-[20px] hover:bg-slate-800 transition-all font-black text-xs uppercase tracking-widest shadow-xl shadow-slate-200">
-                  Modify Product Data
-                </button>
-              </div>
+              <div class="flex gap-3"><button @click="closeModals"
+                  class="flex-1 py-3 bg-neutral-100 rounded-xl text-sm font-semibold text-neutral-600">Close</button><button
+                  @click="openEditModal(currentProduct)"
+                  class="flex-1 py-3 bg-neutral-900 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2">
+                  <Edit2 class="w-4 h-4" />Edit
+                </button></div>
             </div>
           </div>
         </div>
@@ -1105,24 +953,9 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.slide-down-enter-active,
-.slide-down-leave-active {
-  transition: all 0.3s ease;
-}
-
-.slide-down-enter-from {
-  opacity: 0;
-  transform: translateY(-20px) translateX(-50%);
-}
-
-.slide-down-leave-to {
-  opacity: 0;
-  transform: translateY(-20px) translateX(-50%);
-}
-
 .modal-enter-active,
 .modal-leave-active {
-  transition: all 0.3s ease;
+  transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .modal-enter-from,
@@ -1130,37 +963,64 @@ onMounted(() => {
   opacity: 0;
 }
 
-.modal-enter-from > div,
-.modal-leave-to > div {
-  transform: scale(0.95);
+.modal-enter-active .animate-modalSlideIn {
+  animation: modalSlideIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-.list-enter-active,
-.list-leave-active {
-  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+.modal-leave-active .animate-modalSlideIn {
+  animation: modalSlideOut 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.list-enter-from {
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes modalSlideOut {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(0.95) translateY(10px);
+  }
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: all 0.3s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
   opacity: 0;
-  transform: translateY(30px) scale(0.95);
+  transform: translateY(-8px);
 }
 
-.list-leave-to {
-  opacity: 0;
-  transform: scale(0.9);
+/* Custom scrollbar for form */
+.overflow-y-auto::-webkit-scrollbar {
+  width: 6px;
 }
 
-.custom-scrollbar::-webkit-scrollbar {
-  width: 8px;
-}
-.custom-scrollbar::-webkit-scrollbar-track {
+.overflow-y-auto::-webkit-scrollbar-track {
   background: transparent;
 }
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #e2e8f0;
-  border-radius: 10px;
+
+.overflow-y-auto::-webkit-scrollbar-thumb {
+  background: #e5e5e5;
+  border-radius: 3px;
 }
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #cbd5e1;
+
+.overflow-y-auto::-webkit-scrollbar-thumb:hover {
+  background: #d4d4d4;
 }
 </style>

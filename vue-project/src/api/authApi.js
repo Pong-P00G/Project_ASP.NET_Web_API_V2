@@ -30,22 +30,12 @@ export const authAPI = {
         });
 
         // Store token if login successful
+        // NOTE: Side effects removed. Persistence is now handled by the Auth Store.
+        /* 
         if (response.data) {
-            // Handle different response structures
-            const token = response.data.accessToken || response.data.token;
-            const refreshToken = response.data.refreshToken;
-            const user = response.data.user;
-            
-            if (token) {
-                localStorage.setItem('accessToken', token);
-            }
-            if (refreshToken) {
-                localStorage.setItem('refreshToken', refreshToken);
-            }
-            if (user) {
-                localStorage.setItem('user', JSON.stringify(user));
-            }
+             // ... code moved to Auth Store ...
         }
+        */
 
         return response;
     },
