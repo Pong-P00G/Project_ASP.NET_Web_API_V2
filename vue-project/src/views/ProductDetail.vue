@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useWishlistStore } from '../stores/Wishlist'
 import { productAPI } from '../api/productsApi'
@@ -15,6 +15,27 @@ const selectedImage = ref(null)
 const selectedVariants = ref({})
 const quantity = ref(1)
 const addingToCart = ref(false)
+const showFullDescription = ref(false)
+let autoSlideInterval = null
+
+const stopAutoSlide = () => {
+    if (autoSlideInterval) {
+        clearInterval(autoSlideInterval)
+        autoSlideInterval = null
+    }
+}
+
+const startAutoSlide = () => {
+    stopAutoSlide()
+    if (product.value?.images?.length > 1) {
+        autoSlideInterval = setInterval(() => {
+            if (!selectedImage.value) return
+            const currentIndex = product.value.images.findIndex(img => img.imageId === selectedImage.value.imageId)
+            const nextIndex = (currentIndex + 1) % product.value.images.length
+            selectedImage.value = product.value.images[nextIndex]
+        }, 3000)
+    }
+}
 
 const fetchProduct = async (id) => {
     try {
@@ -45,6 +66,7 @@ const fetchProduct = async (id) => {
             stock: productData.stock,
             stockStatus: productData.stockStatus,
             category: productData.categories?.[0]?.categoryName || 'Uncategorized',
+            allCategories: productData.categories || [],
             sku: productData.sku || 'N/A',
             supplier: productData.supplier || 'N/A',
             featured: productData.featured || false,
@@ -54,6 +76,7 @@ const fetchProduct = async (id) => {
         // Set the first image as selected by default
         if (product.value.images && product.value.images.length > 0) {
             selectedImage.value = product.value.images[0]
+            startAutoSlide()
         }
 
         console.log('Processed product:', product.value)
@@ -68,6 +91,7 @@ const fetchProduct = async (id) => {
 
 const selectImage = (image) => {
     selectedImage.value = image
+    startAutoSlide() // Reset timer on manual selection
 }
 
 const groupedVariants = computed(() => {
@@ -102,8 +126,77 @@ const selectVariant = (variantName, value) => {
     selectedVariants.value[variantName] = value
 }
 
+// Find the selected variant based on user's selections
+const selectedVariant = computed(() => {
+    if (!product.value || !product.value.variants || product.value.variants.length === 0) return null
+
+    const selectionKeys = Object.keys(selectedVariants.value)
+    if (selectionKeys.length === 0) return product.value.variants[0] // Default to first variant
+
+    // Find variant that matches all selected options
+    return product.value.variants.find(variant => {
+        return selectionKeys.every(key => {
+            const selectedValue = selectedVariants.value[key]
+            return variant.options.some(opt => opt.variant === key && opt.value === selectedValue)
+        })
+    }) || product.value.variants[0]
+})
+
+// Display price based on selected variant
+const displayPrice = computed(() => {
+    if (selectedVariant.value) {
+        // Use discount price if available, otherwise regular price
+        const variant = selectedVariant.value
+        return variant.discountPrice && variant.discountPrice < variant.price
+            ? variant.discountPrice
+            : variant.price
+    }
+    return product.value?.basePrice || 0
+})
+
+// Original price for comparison
+const originalPrice = computed(() => {
+    if (selectedVariant.value) {
+        return selectedVariant.value.price
+    }
+    return product.value?.basePrice || 0
+})
+
+// Check if variant is on sale
+const isOnSale = computed(() => {
+    if (selectedVariant.value) {
+        const variant = selectedVariant.value
+        return variant.discountPrice && variant.discountPrice < variant.price
+    }
+    return false
+})
+
+// Calculate discount percentage
+const discountPercentage = computed(() => {
+    if (isOnSale.value && selectedVariant.value) {
+        const variant = selectedVariant.value
+        return Math.round((1 - variant.discountPrice / variant.price) * 100)
+    }
+    return 0
+})
+
+// Get stock quantity for selected variant
+const variantStock = computed(() => {
+    if (selectedVariant.value) {
+        return selectedVariant.value.stockQuantity
+    }
+    return product.value?.stock || 0
+})
+
+const currentCategories = computed(() => {
+    if (product.value && product.value.allCategories && product.value.allCategories.length > 0) {
+        return product.value.allCategories;
+    }
+    return [{ categoryId: 'default', categoryName: 'Uncategorized' }];
+})
+
 const increaseQuantity = () => {
-    if (product.value && quantity.value < product.value.stock) {
+    if (variantStock.value && quantity.value < variantStock.value) {
         quantity.value++
     }
 }
@@ -115,8 +208,8 @@ const decreaseQuantity = () => {
 }
 
 const addToCart = async (prod) => {
-    if (!prod.inStock) {
-        alert('This product is out of stock!')
+    if (variantStock.value <= 0) {
+        alert('This variant is out of stock!')
         return
     }
 
@@ -151,6 +244,10 @@ onMounted(() => {
         error.value = 'No product ID provided'
     }
 })
+
+onUnmounted(() => {
+    stopAutoSlide()
+})
 </script>
 
 
@@ -164,7 +261,7 @@ onMounted(() => {
             <!-- Product Images Section -->
             <div class="space-y-4">
                 <!-- Main Image -->
-                <div class="aspect-square bg-gray-100 rounded-lg overflow-hidden relative">
+                <div class="aspect-square bg-transparent rounded-lg overflow-hidden relative">
                     <img v-if="selectedImage" :src="selectedImage.imageUrl" :alt="product.name"
                         class="w-full h-full object-contain">
                     <img v-else-if="product.images && product.images.length > 0" :src="product.images[0].imageUrl"
@@ -183,7 +280,7 @@ onMounted(() => {
                 </div>
 
                 <!-- Thumbnail Images -->
-                <div v-if="product.images && product.images.length > 1" class="flex gap-2 overflow-x-auto pb-2">
+                <div v-if="product.images && product.images.length > 0" class="flex flex-wrap gap-2 pt-2">
                     <div v-for="(image, index) in product.images" :key="image.imageId" @click="selectImage(image)"
                         class="shrink-0 w-20 h-20 rounded-md overflow-hidden cursor-pointer border-2"
                         :class="selectedImage && selectedImage.imageId === image.imageId ? 'border-blue-500' : 'border-gray-200'">
@@ -196,7 +293,17 @@ onMounted(() => {
             <!-- Product Information Section -->
             <div class="space-y-6">
                 <div>
-                    <h1 class="text-3xl font-bold text-gray-900">{{ product.name }}</h1>
+                    <div class="flex items-center gap-2 mb-2 flex-wrap">
+                        <span v-for="cat in currentCategories" :key="cat.categoryId"
+                            class="text-sm font-semibold text-blue-600 bg-blue-50 px-3 py-1 rounded-full">
+                            {{ cat.categoryName }}
+                        </span>
+                        <span v-if="product.featured"
+                            class="text-sm font-semibold text-red-600 bg-red-50 px-3 py-1 rounded-full">
+                            Featured
+                        </span>
+                    </div>
+                    <h1 class="text-4xl font-extrabold text-neutral-900 tracking-tight mb-2">{{ product.name }}</h1>
                     <div class="mt-2 flex items-center">
                         <div class="flex items-center">
                             <!-- Rating stars would go here -->
@@ -212,62 +319,89 @@ onMounted(() => {
                     </div>
                 </div>
 
-                <!-- Price -->
-                <div class="mt-4">
-                    <div class="flex items-center">
-                        <p class="text-3xl font-bold text-gray-900">${{ product.basePrice }}</p>
-                        <span v-if="product.originalPrice && product.originalPrice > product.basePrice"
-                            class="ml-4 text-lg text-gray-500 line-through">${{ product.originalPrice }}</span>
-                        <span v-if="product.discountPercentage > 0"
-                            class="ml-4 inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800">
-                            {{ product.discountPercentage }}% OFF
+                <!-- Price Section -->
+                <div class="mt-6 pb-6 border-b border-neutral-200">
+                    <div class="flex items-baseline gap-4 flex-wrap">
+                        <!-- Current/Sale Price -->
+                        <p class="text-4xl font-light tracking-tight text-neutral-900">
+                            ${{ displayPrice.toFixed(2) }}
+                        </p>
+
+                        <!-- Original Price (crossed out if on sale) -->
+                        <span v-if="isOnSale" class="text-xl text-neutral-400 line-through font-light">
+                            ${{ originalPrice.toFixed(2) }}
+                        </span>
+
+                        <!-- Discount Badge -->
+                        <span v-if="isOnSale"
+                            class="px-3 py-1 text-xs font-semibold tracking-wider uppercase bg-neutral-900 text-white">
+                            Save {{ discountPercentage }}%
+                        </span>
+                    </div>
+
+                    <!-- Selected Variant Info -->
+                    <div v-if="selectedVariant && Object.keys(selectedVariants).length > 0"
+                        class="mt-3 text-sm text-neutral-500 flex items-center gap-2">
+                        <span v-for="(value, key) in selectedVariants" :key="key" class="text-neutral-700">
+                            {{ key }}: <span class="font-medium">{{ value }}</span>
                         </span>
                     </div>
                 </div>
 
                 <!-- Stock Status -->
-                <div class="mt-2">
-                    <div class="flex items-center">
-                        <span v-if="product.inStock"
-                            class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
-                            <svg class="mr-1.5 h-2 w-2 text-green-400" fill="currentColor" viewBox="0 0 8 8">
-                                <circle cx="4" cy="4" r="3" />
-                            </svg>
+                <div class="mt-4">
+                    <div class="flex items-center gap-3">
+                        <span v-if="variantStock > 0" class="text-sm text-neutral-600">
+                            <span class="inline-block w-2 h-2 bg-green-500 rounded-full mr-2"></span>
                             In Stock
                         </span>
-                        <span v-else
-                            class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800">
-                            <svg class="mr-1.5 h-2 w-2 text-red-400" fill="currentColor" viewBox="0 0 8 8">
-                                <circle cx="4" cy="4" r="3" />
-                            </svg>
+                        <span v-else class="text-sm text-red-500">
+                            <span class="inline-block w-2 h-2 bg-red-500 rounded-full mr-2"></span>
                             Out of Stock
                         </span>
-                        <span v-if="product.stock" class="ml-4 text-sm text-gray-500">({{ product.stock }}
-                            available)</span>
+                        <span class="text-sm text-neutral-400">
+                            {{ variantStock }} available
+                        </span>
                     </div>
                 </div>
 
                 <!-- Product Description -->
-                <div class="mt-6">
-                    <h3 class="text-lg font-medium text-gray-900">Description</h3>
-                    <div class="mt-2 text-gray-600">
-                        <p>{{ product.description || 'No description available for this product.' }}</p>
+                <div class="mt-8 pt-8 border-t border-neutral-200">
+                    <h3 class="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4">Description</h3>
+                    <div class="prose prose-sm text-gray-500 max-w-none">
+                        <div class="relative">
+                            <p :class="['leading-relaxed transition-all', !showFullDescription ? 'line-clamp-3' : '']">
+                                {{ product.description || 'No description available for this product.' }}
+                            </p>
+                            <button v-if="product.description && product.description.length > 150"
+                                @click="showFullDescription = !showFullDescription"
+                                class="text-xs font-bold text-blue-600 hover:text-blue-700 mt-2 focus:outline-none flex items-center gap-1">
+                                {{ showFullDescription ? 'Show less' : 'Read more' }}
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3"
+                                    :class="{ 'rotate-180': showFullDescription }" fill="none" viewBox="0 0 24 24"
+                                    stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M19 9l-7 7-7-7" />
+                                </svg>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
                 <!-- Product Variants -->
-                <div v-if="product.variants && product.variants.length > 0" class="mt-6">
-                    <h3 class="text-lg font-medium text-gray-900">Options</h3>
-                    <div class="mt-4 space-y-4">
-                        <div v-for="(variantGroup, index) in groupedVariants" :key="index"
-                            class="border-b border-gray-200 pb-4">
-                            <h4 class="text-sm font-medium text-gray-900 capitalize">{{ variantGroup.name }}</h4>
-                            <div class="mt-2 flex flex-wrap gap-2">
+                <div v-if="product.variants && product.variants.length > 0" class="mt-8">
+                    <div class="space-y-6">
+                        <div v-for="(variantGroup, index) in groupedVariants" :key="index">
+                            <h4 class="text-xs font-semibold text-neutral-500 uppercase tracking-widest mb-3">
+                                {{ variantGroup.name }}
+                            </h4>
+                            <div class="flex flex-wrap gap-2">
                                 <button v-for="(option, optionIndex) in variantGroup.options" :key="optionIndex"
                                     @click="selectVariant(variantGroup.name, option.value)"
-                                    class="px-3 py-1.5 text-sm border rounded-md" :class="selectedVariants[variantGroup.name] === option.value
-                                        ? 'border-blue-500 bg-blue-50 text-blue-700'
-                                        : 'border-gray-300 text-gray-700 hover:bg-gray-50'">
+                                    class="min-w-[60px] px-5 py-3 text-sm rounded-2xl font-medium border transition-all duration-150"
+                                    :class="selectedVariants[variantGroup.name] === option.value
+                                        ? 'border-neutral-900 bg-neutral-900 text-white'
+                                        : 'border-neutral-300 text-neutral-700 bg-white hover:border-neutral-900'">
                                     {{ option.value }}
                                 </button>
                             </div>
@@ -276,31 +410,42 @@ onMounted(() => {
                 </div>
 
                 <!-- Quantity Selector -->
-                <div class="mt-6">
-                    <h3 class="text-lg font-medium text-gray-900">Quantity</h3>
-                    <div class="mt-2 flex items-center">
-                        <button @click="decreaseQuantity"
-                            class="px-3 py-1 border border-gray-300 rounded-l-md bg-gray-50 text-gray-600 hover:bg-gray-100"
-                            :disabled="quantity <= 1">
-                            -
-                        </button>
-                        <input type="number" v-model="quantity" min="1" :max="product.stock"
-                            class="w-16 text-center border-y border-gray-300">
-                        <button @click="increaseQuantity"
-                            class="px-3 py-1 border border-gray-300 rounded-r-md bg-gray-50 text-gray-600 hover:bg-gray-100"
-                            :disabled="quantity >= product.stock">
-                            +
-                        </button>
-                        <span v-if="product.stock" class="ml-4 text-sm text-gray-500">Max: {{ product.stock }}</span>
+                <div class="mt-8">
+                    <h4 class="text-xs font-semibold text-neutral-500 uppercase tracking-widest mb-3">Quantity</h4>
+                    <div class="flex items-center gap-4">
+                        <div class="inline-flex items-center border border-neutral-300 rounded-lg">
+                            <button @click="decreaseQuantity"
+                                class="w-10 h-10 flex items-center justify-center text-neutral-600 hover:bg-neutral-100 transition-colors"
+                                :disabled="quantity <= 1" :class="quantity <= 1 ? 'opacity-30 cursor-not-allowed' : ''">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                        d="M20 12H4" />
+                                </svg>
+                            </button>
+                            <input type="number" v-model="quantity" min="1" :max="variantStock"
+                                class="w-14 h-10 text-center text-sm font-medium border-x border-neutral-300 focus:outline-none">
+                            <button @click="increaseQuantity"
+                                class="w-10 h-10 flex items-center justify-center text-neutral-600 hover:bg-neutral-100 transition-colors"
+                                :disabled="quantity >= variantStock"
+                                :class="quantity >= variantStock ? 'opacity-30 cursor-not-allowed' : ''">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                        d="M12 4v16m8-8H4" />
+                                </svg>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
                 <!-- Action Buttons -->
-                <div class="mt-8 flex flex-col sm:flex-row gap-3">
-                    <button @click="addToCart(product)" :disabled="!product.inStock || addingToCart"
-                        class="flex-1 px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center">
-                        <span v-if="addingToCart" class="mr-2">
-                            <svg class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none"
+                <div class="mt-10 space-y-3">
+                    <button @click="addToCart(product)" :disabled="variantStock <= 0 || addingToCart"
+                        class="w-full py-3.5 text-sm font-semibold rounded-xl tracking-wider uppercase transition-all duration-150 flex items-center justify-center gap-3"
+                        :class="variantStock > 0
+                            ? 'bg-neutral-900 text-white hover:bg-neutral-800'
+                            : 'bg-neutral-200 text-neutral-400 cursor-not-allowed'">
+                        <span v-if="addingToCart">
+                            <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none"
                                 viewBox="0 0 24 24">
                                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor"
                                     stroke-width="4"></circle>
@@ -309,38 +454,47 @@ onMounted(() => {
                                 </path>
                             </svg>
                         </span>
-                        <span v-if="product.inStock">{{ addingToCart ? 'Adding...' : 'Add to Cart' }}</span>
+                        <span v-if="variantStock > 0">{{ addingToCart ? 'Adding to Cart...' : 'Add to Cart' }}</span>
                         <span v-else>Out of Stock</span>
                     </button>
 
                     <button @click="addToWishlist(product)"
-                        class="flex-1 px-6 py-3 border border-gray-300 text-base font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center justify-center">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24"
+                        class="w-full py-3.5 text-sm font-semibold rounded-xl tracking-wider uppercase border border-neutral-900 text-neutral-900 bg-white hover:text-red-500 hover:border-red-500 hover:bg-neutral-50 transition-colors flex items-center justify-center gap-3">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24"
                             stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
                                 d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                         </svg>
-                        Wishlist
+                        Add to Wishlist
                     </button>
                 </div>
-
-                <!-- Product Meta Information -->
-                <div class="mt-8 border-t border-gray-200 pt-6">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <h4 class="text-sm font-medium text-gray-900">Category</h4>
-                            <p class="mt-1 text-sm text-gray-600">{{ product.category || 'Uncategorized' }}</p>
+                <!-- Product Specifications -->
+                <!-- <div class="mt-8 border-t border-neutral-200 pt-8 hidden">
+                    <h3 class="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4">Specifications</h3>
+                    <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                        <div class="border-b border-neutral-100 pb-2">
+                            <span
+                                class="block text-xs font-medium text-neutral-500 uppercase tracking-wide">Supplier</span>
+                            <span class="block mt-1 text-sm font-medium text-neutral-900">{{ product.supplier || 'N/A'
+                                }}</span>
                         </div>
-                        <div>
-                            <h4 class="text-sm font-medium text-gray-900">SKU</h4>
-                            <p class="mt-1 text-sm text-gray-600">{{ product.sku || 'N/A' }}</p>
+                        <div class="border-b border-neutral-100 pb-2">
+                            <span class="block text-xs font-medium text-neutral-500 uppercase tracking-wide">SKU</span>
+                            <span class="block mt-1 text-sm font-medium text-neutral-900">{{ product.sku || 'N/A'
+                                }}</span>
                         </div>
-                        <div>
-                            <h4 class="text-sm font-medium text-gray-900">Supplier</h4>
-                            <p class="mt-1 text-sm text-gray-600">{{ product.supplier || 'N/A' }}</p>
+                        <div class="border-b border-neutral-100 pb-2 sm:col-span-2">
+                            <span
+                                class="block text-xs font-medium text-neutral-500 uppercase tracking-wide">Categories</span>
+                            <div class="mt-2 flex flex-wrap gap-2">
+                                <span v-for="cat in currentCategories" :key="cat.categoryId"
+                                    class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-neutral-100 text-neutral-800">
+                                    {{ cat.categoryName }}
+                                </span>
+                            </div>
                         </div>
                     </div>
-                </div>
+                </div> -->
             </div>
         </div>
 

@@ -131,6 +131,10 @@ namespace SmallEcommerceApi.Controllers.Products
                         Price = v.Price,
                         StockQuantity = v.StockQuantity,
                         IsActive = v.IsActive,
+                        DiscountPrice = v.DiscountPrice,
+                        DiscountPercentage = v.DiscountPercentage,
+                        DiscountStartDate = v.DiscountStartDate,
+                        DiscountEndDate = v.DiscountEndDate,
                         CreatedAt = DateTime.UtcNow
                     };
 
@@ -281,6 +285,22 @@ namespace SmallEcommerceApi.Controllers.Products
                         ImageUrl = img.ImageUrl,
                         IsPrimary = img.IsPrimary,
                         DisplayOrder = img.DisplayOrder
+                    }).ToList(),
+                    Variants = p.ProductVariants!.Select(pv => new VariantResponseDto
+                    {
+                        ProductVariantId = pv.ProductVariantId,
+                        SKU = pv.SKU,
+                        Price = pv.Price,
+                        StockQuantity = pv.StockQuantity,
+                        DiscountPrice = pv.DiscountPrice,
+                        DiscountPercentage = pv.DiscountPercentage,
+                        DiscountStartDate = pv.DiscountStartDate,
+                        DiscountEndDate = pv.DiscountEndDate,
+                        Options = pv.ProductVariantOptions.Select(pvo => new VariantOptionDto
+                        {
+                            Variant = pvo.VariantOption.Variant.Name ?? string.Empty,
+                            Value = pvo.VariantOption.OptionValue
+                        }).ToList()
                     }).ToList()
                 })
                 .ToListAsync();
@@ -426,6 +446,10 @@ namespace SmallEcommerceApi.Controllers.Products
                         Price = v.Price,
                         StockQuantity = v.StockQuantity,
                         IsActive = v.IsActive,
+                        DiscountPrice = v.DiscountPrice,
+                        DiscountPercentage = v.DiscountPercentage,
+                        DiscountStartDate = v.DiscountStartDate,
+                        DiscountEndDate = v.DiscountEndDate,
                         CreatedAt = DateTime.UtcNow
                     };
 
@@ -609,6 +633,10 @@ namespace SmallEcommerceApi.Controllers.Products
                         SKU = pv.SKU,
                         Price = pv.Price,
                         StockQuantity = pv.StockQuantity,
+                        DiscountPrice = pv.DiscountPrice,
+                        DiscountPercentage = pv.DiscountPercentage,
+                        DiscountStartDate = pv.DiscountStartDate,
+                        DiscountEndDate = pv.DiscountEndDate,
                         Options = pv.ProductVariantOptions.Select(pvo => new VariantOptionDto
                         {
                             Variant = pvo.VariantOption.Variant.Name ?? string.Empty,

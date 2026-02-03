@@ -24,6 +24,18 @@ namespace SmallEcommerceApi.Models.Products
         [Column("is_active")]
         public bool IsActive { get; set; }
 
+        [Column("discount_price")]
+        public decimal? DiscountPrice { get; set; }
+
+        [Column("discount_percentage")]
+        public decimal? DiscountPercentage { get; set; }
+
+        [Column("discount_start")]
+        public DateTime? DiscountStartDate { get; set; }
+
+        [Column("discount_end")]
+        public DateTime? DiscountEndDate { get; set; }
+
         [Column("created_at")]
         public DateTime CreatedAt { get; set; }
         public Product? Product { get; set; }

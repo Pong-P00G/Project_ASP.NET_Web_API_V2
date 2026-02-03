@@ -182,7 +182,7 @@ onMounted(() => {
 <template>
   <div class="min-h-screen bg-white">
     <!-- Hero Header -->
-    <section class="pt-32 pb-16 bg-white overflow-hidden">
+    <section class="pt-32 pb-16 bg-white overflow-hidden mt-6">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
         <!-- Decorative Elements -->
         <div class="absolute -top-24 -right-24 w-96 h-96 bg-violet-100 rounded-full blur-3xl opacity-50"></div>

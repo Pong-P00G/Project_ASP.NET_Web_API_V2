@@ -92,7 +92,7 @@ const milestones = ref([
 <template>
     <div class="min-h-screen bg-white">
         <!-- Hero Section -->
-        <section class="py-32 bg-white overflow-hidden">
+        <section class="py-32 bg-white overflow-hidden mt-6">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="text-center space-y-8 max-w-4xl mx-auto">
                     <div class="inline-flex items-center gap-2 px-3 py-1 bg-gray-100 rounded-full text-gray-600 text-xs font-bold tracking-wider uppercase">
@@ -235,7 +235,7 @@ const milestones = ref([
                 </div>
 
                 <div class="space-y-16">
-                    <div v-for="(milestone, index) in milestones" :key="milestone.year" 
+                    <div v-for="(milestone) in milestones" :key="milestone.year" 
                         class="flex flex-col md:flex-row items-start gap-8 group">
                         <div class="flex-shrink-0 w-32">
                             <div class="text-5xl font-black text-gray-900 tracking-tight">{{ milestone.year }}</div>
