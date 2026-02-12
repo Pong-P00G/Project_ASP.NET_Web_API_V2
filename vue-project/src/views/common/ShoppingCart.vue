@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
-import { cartApi } from '../api/cartApi'
+import { cartApi } from '../../api/cartApi'
 import {
     ShoppingCart,
     Plus,

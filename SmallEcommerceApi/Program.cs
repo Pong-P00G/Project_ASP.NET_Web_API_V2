@@ -138,6 +138,23 @@ namespace SmallEcommerceApi
                         }
 
 
+
+                        // Ensure wishlist_item table exists (safeguard for migration issues)
+                        await dbContext.Database.ExecuteSqlRawAsync(@"
+                            IF OBJECT_ID(N'wishlist_item', N'U') IS NULL
+                            BEGIN
+                                CREATE TABLE [wishlist_item] (
+                                    [wishlist_item_id] int NOT NULL IDENTITY,
+                                    [user_id] int NOT NULL,
+                                    [product_id] int NOT NULL,
+                                    [added_at] datetime2 NOT NULL,
+                                    CONSTRAINT [PK_wishlist_item] PRIMARY KEY ([wishlist_item_id]),
+                                    CONSTRAINT [FK_wishlist_item_product_product_id] FOREIGN KEY ([product_id]) REFERENCES [product] ([product_id]) ON DELETE CASCADE
+                                );
+                                CREATE INDEX [IX_wishlist_item_product_id] ON [wishlist_item] ([product_id]);
+                                CREATE UNIQUE INDEX [IX_wishlist_item_user_id_product_id] ON [wishlist_item] ([user_id], [product_id]);
+                            END
+                        ");
                     }
                     catch (Exception ex)
                     {

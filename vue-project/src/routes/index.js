@@ -56,14 +56,6 @@ const routes = [
                 }
             },
             {
-                name: 'Checkout',
-                path: '/checkout',
-                component: () => import("../views/CheckoutPage.vue"),
-                meta: {
-                    title: 'Secure Checkout - AlieeShop'
-                }
-            },
-            {
                 name: 'OrderSuccess',
                 path: '/order-success/:id',
                 component: () => import("../views/OrderSuccessPage.vue"),
@@ -104,16 +96,14 @@ const routes = [
             {
                 path: '/forgot-password',
                 name: 'ForgotPassword',
-                component: () => import("../views/auth/ForgetPassword.vue"), // Fixed double .vue
+                component: () => import("../views/auth/ForgetPassword.vue"),
                 meta: { guest: true }
             },
             {
-                path: '/:pathMatch(.*)*',
-                name: 'NotFound',
-                component: () => import('../views/NotFound.vue'),
-                meta: {
-                    title: '404 - Page Not Found'
-                }
+                path: '/reset-password',
+                name: 'ResetPassword',
+                component: () => import("../views/auth/ResetPassword.vue"),
+                meta: { guest: true }
             },
             {
                 path: '/terms',
@@ -124,6 +114,56 @@ const routes = [
                 path: '/contact-support',
                 name: 'ContactSupport',
                 component: () => import('../views/support/ContactSupport.vue')
+            },
+            {
+                path: '/gift-cards',
+                name: 'GiftCards',
+                component: () => import('../views/GiftCardsPage.vue'),
+                meta: { title: 'Gift Cards - AlieeShop' }
+            },
+            {
+                path: '/track-order',
+                name: 'TrackOrder',
+                component: () => import('../views/TrackOrderPage.vue'),
+                meta: { title: 'Track Your Order - AlieeShop' }
+            },
+            {
+                path: '/returns',
+                name: 'Returns',
+                component: () => import('../views/ReturnsPage.vue'),
+                meta: { title: 'Returns & Exchanges - AlieeShop' }
+            },
+            {
+                path: '/shipping',
+                name: 'ShippingInfo',
+                component: () => import('../views/ShippingInfoPage.vue'),
+                meta: { title: 'Shipping Information - AlieeShop' }
+            },
+            {
+                path: '/faq',
+                name: 'FAQ',
+                component: () => import('../views/FaqPage.vue'),
+                meta: { title: 'FAQ - AlieeShop' }
+            },
+            {
+                path: '/careers',
+                name: 'Careers',
+                component: () => import('../views/CareersPage.vue'),
+                meta: { title: 'Careers - AlieeShop' }
+            },
+            {
+                path: '/press',
+                name: 'Press',
+                component: () => import('../views/PressPage.vue'),
+                meta: { title: 'Press - AlieeShop' }
+            },
+            {
+                path: '/:pathMatch(.*)*',
+                name: 'NotFound',
+                component: () => import('../views/NotFound.vue'),
+                meta: {
+                    title: '404 - Page Not Found'
+                }
             }
         ]
     },

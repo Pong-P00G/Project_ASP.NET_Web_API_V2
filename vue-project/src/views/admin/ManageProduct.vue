@@ -488,7 +488,7 @@ onMounted(fetchProducts)
     <div class="flex flex-wrap items-center justify-between gap-4 mb-8">
       <div>
         <div
-          class="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-orange-500/20 to-pink-500/20 backdrop-blur-sm border border-orange-500/20 rounded-full text-orange-400 text-xs font-semibold mb-3">
+          class="inline-flex items-center gap-2 px-4 py-2 bg-linear-to-r from-orange-500/20 to-pink-500/20 backdrop-blur-sm border border-orange-500/20 rounded-full text-orange-400 text-xs font-semibold mb-3">
           <Package class="w-3.5 h-3.5" /><span>Product Management</span>
         </div>
         <h1 class="text-3xl font-black text-white tracking-tight">Products</h1>
@@ -500,7 +500,7 @@ onMounted(fetchProducts)
           <RefreshCw class="w-4 h-4" :class="{ 'animate-spin': loading }" />Sync
         </button>
         <button @click="openAddModal"
-          class="group flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-orange-500 to-pink-500 rounded-xl text-sm font-bold text-white shadow-lg shadow-orange-500/25 hover:shadow-orange-500/40 hover:scale-105 transition-all duration-300">
+          class="group flex items-center gap-2 px-6 py-3 bg-linear-to-r from-orange-500 to-pink-500 rounded-xl text-sm font-bold text-white shadow-lg shadow-orange-500/25 hover:shadow-orange-500/40 hover:scale-105 transition-all duration-300">
           <Plus class="w-4 h-4" />New Product
         </button>
       </div>
@@ -511,11 +511,11 @@ onMounted(fetchProducts)
       <div
         class="stat-card group relative bg-white/5 backdrop-blur-xl rounded-2xl p-6 border border-white/10 hover:border-orange-500/50 hover:-translate-y-2 hover:shadow-2xl hover:shadow-orange-500/10 transition-all duration-500">
         <div
-          class="absolute inset-0 bg-gradient-to-br from-orange-500/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-2xl">
+          class="absolute inset-0 bg-linear-to-br from-orange-500/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-2xl">
         </div>
         <div class="relative z-10 flex items-center gap-4">
           <div
-            class="w-14 h-14 flex items-center justify-center bg-gradient-to-br from-orange-400 to-pink-500 rounded-2xl text-white shadow-lg shadow-orange-500/30 group-hover:scale-110 transition-transform duration-300">
+            class="w-14 h-14 flex items-center justify-center bg-linear-to-br from-orange-400 to-pink-500 rounded-2xl text-white shadow-lg shadow-orange-500/30 group-hover:scale-110 transition-transform duration-300">
             <Package class="w-6 h-6" />
           </div>
           <div>
@@ -527,11 +527,11 @@ onMounted(fetchProducts)
       <div
         class="stat-card group relative bg-white/5 backdrop-blur-xl rounded-2xl p-6 border border-white/10 hover:border-emerald-500/50 hover:-translate-y-2 hover:shadow-2xl hover:shadow-emerald-500/10 transition-all duration-500">
         <div
-          class="absolute inset-0 bg-gradient-to-br from-emerald-500/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-2xl">
+          class="absolute inset-0 bg-linear-to-br from-emerald-500/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-2xl">
         </div>
         <div class="relative z-10 flex items-center gap-4">
           <div
-            class="w-14 h-14 flex items-center justify-center bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-2xl text-white shadow-lg shadow-emerald-500/30 group-hover:scale-110 transition-transform duration-300">
+            class="w-14 h-14 flex items-center justify-center bg-linear-to-br from-emerald-400 to-emerald-600 rounded-2xl text-white shadow-lg shadow-emerald-500/30 group-hover:scale-110 transition-transform duration-300">
             <Boxes class="w-6 h-6" />
           </div>
           <div>
@@ -543,11 +543,11 @@ onMounted(fetchProducts)
       <div
         class="stat-card group relative bg-white/5 backdrop-blur-xl rounded-2xl p-6 border border-white/10 hover:border-red-500/50 hover:-translate-y-2 hover:shadow-2xl hover:shadow-red-500/10 transition-all duration-500">
         <div
-          class="absolute inset-0 bg-gradient-to-br from-red-500/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-2xl">
+          class="absolute inset-0 bg-linear-to-br from-red-500/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-2xl">
         </div>
         <div class="relative z-10 flex items-center gap-4">
           <div
-            class="w-14 h-14 flex items-center justify-center bg-gradient-to-br from-red-400 to-red-600 rounded-2xl text-white shadow-lg shadow-red-500/30 group-hover:scale-110 transition-transform duration-300">
+            class="w-14 h-14 flex items-center justify-center bg-linear-to-br from-red-400 to-red-600 rounded-2xl text-white shadow-lg shadow-red-500/30 group-hover:scale-110 transition-transform duration-300">
             <AlertCircle class="w-6 h-6" />
           </div>
           <div>
@@ -559,11 +559,11 @@ onMounted(fetchProducts)
       <div
         class="stat-card group relative bg-white/5 backdrop-blur-xl rounded-2xl p-6 border border-white/10 hover:border-purple-500/50 hover:-translate-y-2 hover:shadow-2xl hover:shadow-purple-500/10 transition-all duration-500">
         <div
-          class="absolute inset-0 bg-gradient-to-br from-purple-500/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-2xl">
+          class="absolute inset-0 bg-linear-to-br from-purple-500/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-2xl">
         </div>
         <div class="relative z-10 flex items-center gap-4">
           <div
-            class="w-14 h-14 flex items-center justify-center bg-gradient-to-br from-purple-400 to-purple-600 rounded-2xl text-white shadow-lg shadow-purple-500/30 group-hover:scale-110 transition-transform duration-300">
+            class="w-14 h-14 flex items-center justify-center bg-linear-to-br from-purple-400 to-purple-600 rounded-2xl text-white shadow-lg shadow-purple-500/30 group-hover:scale-110 transition-transform duration-300">
             <DollarSign class="w-6 h-6" />
           </div>
           <div>
@@ -591,7 +591,7 @@ onMounted(fetchProducts)
             <option v-for="c in categories" :key="c" :value="c" class="bg-neutral-900">{{ c }}</option>
           </select>
           <button @click="exportToCSV"
-            class="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-orange-500 to-pink-500 text-white rounded-xl text-xs font-bold hover:shadow-lg hover:shadow-orange-500/25 transition-all">
+            class="flex items-center gap-2 px-4 py-3 bg-linear-to-r from-orange-500 to-pink-500 text-white rounded-xl text-xs font-bold hover:shadow-lg hover:shadow-orange-500/25 transition-all">
             <Download class="w-4 h-4" />Export
           </button>
         </div>
@@ -612,7 +612,7 @@ onMounted(fetchProducts)
         <h3 class="text-xl font-bold text-white mb-2">No Products Found</h3>
         <p class="text-neutral-400 text-sm mb-6">Try adjusting your filters or add a new product</p>
         <button @click="openAddModal"
-          class="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-orange-500 to-pink-500 rounded-xl text-sm font-bold text-white shadow-lg shadow-orange-500/25">
+          class="flex items-center gap-2 px-6 py-3 bg-linear-to-r from-orange-500 to-pink-500 rounded-xl text-sm font-bold text-white shadow-lg shadow-orange-500/25">
           <Plus class="w-4 h-4" />Add New Product
         </button>
       </div>
@@ -651,7 +651,7 @@ onMounted(fetchProducts)
               <Eye class="w-3.5 h-3.5" />View
             </button>
             <button @click="openEditModal(p)"
-              class="flex-1 py-2 bg-gradient-to-r from-orange-500 to-pink-500 rounded-lg text-xs font-semibold text-white flex items-center justify-center gap-1">
+              class="flex-1 py-2 bg-linear-to-r from-orange-500 to-pink-500 rounded-lg text-xs font-semibold text-white flex items-center justify-center gap-1">
               <Edit2 class="w-3.5 h-3.5" />Edit
             </button>
           </div>

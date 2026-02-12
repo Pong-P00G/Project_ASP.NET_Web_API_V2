@@ -20,7 +20,9 @@ namespace SmallEcommerceApi.Controllers
 
         private int? GetUserId()
         {
-            var claim = User.FindFirst(ClaimTypesCustom.UserId);
+            // TokenService uses ClaimTypes.NameIdentifier for user ID
+            var claim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)
+                        ?? User.FindFirst(ClaimTypesCustom.UserId); // fallback to custom "uid"
             if (claim != null && int.TryParse(claim.Value, out int userId))
             {
                 return userId;

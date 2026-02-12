@@ -1,5 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
+import { profileApi } from '../api/profileApi';
+import { useAuthStore } from './Auth';
 
 export const useWishlistStore = defineStore('wishlist', () => {
     // State
@@ -7,27 +9,165 @@ export const useWishlistStore = defineStore('wishlist', () => {
     const loading = ref(false);
     const error = ref(null);
 
-    // Getters (Computed)
+    // Getters
     const wishlistCount = computed(() => wishlistItems.value.length);
 
     const totalValue = computed(() => {
-        return wishlistItems.value.reduce((sum, item) => sum + item.price, 0);
+        return wishlistItems.value.reduce((sum, item) => sum + (item.price || 0), 0);
     });
 
     const inStockCount = computed(() => {
-        return wishlistItems.value.filter(item => item.inStock).length;
+        return wishlistItems.value.filter(item => item.inStock !== false).length;
     });
 
     const isInWishlist = computed(() => {
         return (productId) => {
-            return wishlistItems.value.some(item => item.id === productId);
+            return wishlistItems.value.some(
+                item => item.id === productId || item.productId === productId
+            );
         };
     });
 
-    // Actions
+    // ---- API-based actions (used when logged in) ----
 
-    // Load wishlist from localStorage
-    function loadWishlist() {
+    // Fetch wishlist from backend API
+    async function fetchWishlist() {
+        const authStore = useAuthStore();
+        if (!authStore.isAuthenticated) {
+            loadLocalWishlist();
+            return;
+        }
+
+        try {
+            loading.value = true;
+            error.value = null;
+            const response = await profileApi.getWishlist();
+            const data = response.data?.data || response.data || [];
+            wishlistItems.value = Array.isArray(data) ? data : [];
+        } catch (err) {
+            console.error('Error fetching wishlist:', err);
+            // Fallback to localStorage if API fails
+            loadLocalWishlist();
+        } finally {
+            loading.value = false;
+        }
+    }
+
+    // Normalize product data from any source (ProductDetail vs ProductsPage)
+    function normalizeProduct(product) {
+        const productId = product.id || product.productId;
+        // Extract image: prefer string field, fallback to images array
+        const image = product.image
+            || product.images?.[0]?.imageUrl
+            || product.images?.[0]
+            || null;
+        // Extract category: prefer string field, fallback to categories array
+        const category = product.category
+            || product.categories?.[0]?.categoryName
+            || product.categories?.[0]
+            || null;
+
+        return {
+            id: productId,
+            productId: productId,
+            name: product.name || product.productName,
+            price: product.price || product.basePrice || 0,
+            image,
+            category,
+            inStock: product.inStock !== false,
+            stock: product.stock
+        };
+    }
+
+    // Add item to wishlist
+    async function addToWishlist(product) {
+        const normalized = normalizeProduct(product);
+
+        // Already in wishlist?
+        if (isInWishlist.value(normalized.productId)) {
+            return { success: false, message: 'Already in wishlist' };
+        }
+
+        const authStore = useAuthStore();
+        if (authStore.isAuthenticated) {
+            try {
+                await profileApi.addToWishlist(normalized.productId);
+                // Add to local state immediately for fast UI
+                wishlistItems.value.push(normalized);
+                return { success: true };
+            } catch (err) {
+                console.error('Failed to add to wishlist:', err);
+                error.value = err.response?.data?.message || 'Failed to add to wishlist';
+                return { success: false, message: error.value };
+            }
+        } else {
+            // Guest mode: use localStorage
+            wishlistItems.value.push(normalized);
+            saveLocalWishlist();
+            return { success: true };
+        }
+    }
+
+    // Remove item from wishlist
+    async function removeFromWishlist(productId) {
+        const authStore = useAuthStore();
+        if (authStore.isAuthenticated) {
+            try {
+                await profileApi.removeFromWishlist(productId);
+                wishlistItems.value = wishlistItems.value.filter(
+                    item => item.id !== productId && item.productId !== productId
+                );
+                return { success: true };
+            } catch (err) {
+                console.error('Failed to remove from wishlist:', err);
+                error.value = err.response?.data?.message || 'Failed to remove item';
+                return { success: false, message: error.value };
+            }
+        } else {
+            wishlistItems.value = wishlistItems.value.filter(
+                item => item.id !== productId && item.productId !== productId
+            );
+            saveLocalWishlist();
+            return { success: true };
+        }
+    }
+
+    // Toggle wishlist
+    async function toggleWishlist(product) {
+        const productId = product.id || product.productId;
+        if (isInWishlist.value(productId)) {
+            return await removeFromWishlist(productId);
+        } else {
+            return await addToWishlist(product);
+        }
+    }
+
+    // Clear entire wishlist
+    async function clearWishlist() {
+        const authStore = useAuthStore();
+        if (authStore.isAuthenticated) {
+            try {
+                const promises = wishlistItems.value.map(item =>
+                    profileApi.removeFromWishlist(item.productId || item.id)
+                );
+                await Promise.all(promises);
+                wishlistItems.value = [];
+                return { success: true };
+            } catch (err) {
+                console.error('Failed to clear wishlist:', err);
+                error.value = 'Failed to clear wishlist';
+                return { success: false };
+            }
+        } else {
+            wishlistItems.value = [];
+            saveLocalWishlist();
+            return { success: true };
+        }
+    }
+
+    // ---- localStorage helpers (guest mode fallback) ----
+
+    function loadLocalWishlist() {
         try {
             const saved = localStorage.getItem('wishlist');
             if (saved) {
@@ -39,8 +179,7 @@ export const useWishlistStore = defineStore('wishlist', () => {
         }
     }
 
-    // Save wishlist to localStorage
-    function saveWishlist() {
+    function saveLocalWishlist() {
         try {
             localStorage.setItem('wishlist', JSON.stringify(wishlistItems.value));
         } catch (err) {
@@ -48,78 +187,11 @@ export const useWishlistStore = defineStore('wishlist', () => {
         }
     }
 
-    // Add item to wishlist
-    function addToWishlist(product) {
-        // Check if already in wishlist
-        if (isInWishlist.value(product.id)) {
-            console.log('Product already in wishlist');
-            return { success: false, message: 'Already in wishlist' };
-        }
-
-        // Add to local state
-        wishlistItems.value.push(product);
-        saveWishlist();
-        
-        return { success: true };
-    }
-
-    // Remove item from wishlist
-    function removeFromWishlist(productId) {
-        const index = wishlistItems.value.findIndex(item => item.id === productId);
-        if (index > -1) {
-            wishlistItems.value.splice(index, 1);
-            saveWishlist();
-            return { success: true };
-        }
-        return { success: false, message: 'Item not found in wishlist' };
-    }
-
-    // Toggle item in wishlist (add if not present, remove if present)
-    function toggleWishlist(product) {
-        if (isInWishlist.value(product.id)) {
-            return removeFromWishlist(product.id);
-        } else {
-            return addToWishlist(product);
-        }
-    }
-
-    // Clear entire wishlist
-    function clearWishlist() {
-        wishlistItems.value = [];
-        saveWishlist();
-        return { success: true };
-    }
-
-    // Move all items to cart (mock implementation)
-    function moveAllToCart() {
-        const inStockItems = wishlistItems.value.filter(item => item.inStock);
-        if (inStockItems.length === 0) {
-            return { success: false, message: 'No items in stock' };
-        }
-        
-        // Clear wishlist after successful move
-        clearWishlist();
-        return { success: true, count: inStockItems.length };
-    }
-
-    /**
-     * Get wishlist item by product ID
-     * @param {number|string} productId
-     */
-    function getWishlistItem(productId) {
-        return wishlistItems.value.find(item => item.id === productId);
-    }
-
-    /**
-     * Initialize wishlist (call on app mount)
-     */
+    // Initialize: fetch from API if logged in, else from localStorage
     function initWishlist() {
-        loadWishlist();
+        fetchWishlist();
     }
 
-    /**
-     * Clear error message
-     */
     function clearError() {
         error.value = null;
     }
@@ -135,14 +207,11 @@ export const useWishlistStore = defineStore('wishlist', () => {
         inStockCount,
         isInWishlist,
         // Actions
-        loadWishlist,
-        saveWishlist,
+        fetchWishlist,
         addToWishlist,
         removeFromWishlist,
         toggleWishlist,
         clearWishlist,
-        moveAllToCart,
-        getWishlistItem,
         initWishlist,
         clearError
     };

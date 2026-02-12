@@ -29,7 +29,7 @@ onUnmounted(() => {
         <!-- Navbar -->
         <Navbar />
         <!-- Main Content -->
-        <main class="flex-1 w-full mt-14" role="main">
+        <main class="flex-1 w-full mt-16" role="main">
             <router-view v-slot="{ Component }">
                 <transition name="fade" mode="out-in">
                     <component :is="Component" />

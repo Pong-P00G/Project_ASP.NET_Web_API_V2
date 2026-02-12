@@ -1,26 +1,21 @@
 <script setup>
-import { ref, computed } from 'vue';
-import { useRouter } from 'vue-router';
-import { ShoppingBag, Heart, Star, ChevronLeft, ChevronRight } from 'lucide-vue-next';
+import { ref, computed, onMounted } from 'vue';
+import { RouterLink, useRouter } from 'vue-router';
+import { ShoppingBag, Heart, ChevronLeft, ChevronRight } from 'lucide-vue-next';
+import { productAPI } from '../api/productsApi';
 import { cartApi } from '../api/cartApi';
+import { useWishlistStore } from '../stores/Wishlist.js';
 
+const router = useRouter();
+const wishlistStore = useWishlistStore();
+
+const products = ref([]);
+const loading = ref(true);
 const currentIndex = ref(0);
-
-const products = [
-    { id: 1, name: 'Wireless Headphones', category: 'Electronics', price: 129.99, rating: 4.5, reviews: 234, image: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=400&h=400&fit=crop', badge: 'Best Seller' },
-    { id: 2, name: 'Smart Watch Pro', category: 'Electronics', price: 299.99, rating: 4.8, reviews: 456, image: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=400&h=400&fit=crop', badge: 'New' },
-    { id: 3, name: 'Designer Backpack', category: 'Fashion', price: 79.99, rating: 4.3, reviews: 189, image: 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=400&h=400&fit=crop', badge: '' },
-    { id: 4, name: 'Running Shoes', category: 'Sports', price: 149.99, rating: 4.6, reviews: 567, image: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400&h=400&fit=crop', badge: 'Hot' },
-    { id: 5, name: 'Coffee Maker', category: 'Home', price: 89.99, rating: 4.4, reviews: 312, image: 'https://images.unsplash.com/photo-1517668808822-9ebb02f2a0e6?w=400&h=400&fit=crop', badge: 'Sale' },
-    { id: 6, name: 'Yoga Mat Premium', category: 'Sports', price: 45.99, rating: 4.7, reviews: 423, image: 'https://images.unsplash.com/photo-1601925260368-ae2f83cf8b7f?w=400&h=400&fit=crop', badge: '' },
-    { id: 7, name: 'Leather Wallet', category: 'Fashion', price: 59.99, rating: 4.5, reviews: 278, image: 'https://images.unsplash.com/photo-1627123424574-724758594e93?w=400&h=400&fit=crop', badge: 'New' },
-    { id: 8, name: 'Desk Lamp Modern', category: 'Home', price: 69.99, rating: 4.2, reviews: 156, image: 'https://images.unsplash.com/photo-1507473885765-e6ed057f782c?w=400&h=400&fit=crop', badge: '' },
-];
-
 const itemsPerView = 4;
-const maxIndex = Math.max(0, products.length - itemsPerView);
 
-const canGoNext = computed(() => currentIndex.value < maxIndex);
+const maxIndex = computed(() => Math.max(0, products.value.length - itemsPerView));
+const canGoNext = computed(() => currentIndex.value < maxIndex.value);
 const canGoPrev = computed(() => currentIndex.value > 0);
 
 const translateX = computed(() => {
@@ -28,25 +23,15 @@ const translateX = computed(() => {
 });
 
 const nextSlide = () => {
-    if (canGoNext.value) {
-        currentIndex.value++;
-    }
+    if (canGoNext.value) currentIndex.value++;
 };
 
 const prevSlide = () => {
-    if (canGoPrev.value) {
-        currentIndex.value--;
-    }
+    if (canGoPrev.value) currentIndex.value--;
 };
 
-const goToSlide = (index) => {
-    currentIndex.value = index;
-};
-
-const router = useRouter();
-
-const addToWishlist = (productId) => {
-    console.log('Added to wishlist:', productId);
+const addToWishlist = (product) => {
+    wishlistStore.addToWishlist(product);
 };
 
 const addToCart = async (productId) => {
@@ -55,109 +40,145 @@ const addToCart = async (productId) => {
         router.push('/cart');
     } catch (err) {
         console.error('Failed to add to cart', err);
-        // Fallback for demo purposes: just redirect if API fails (e.g. invalid ID)
-        // or show error. For now, let's alert.
-        alert('Failed to add demo product to cart. It might not exist in the database.');
     }
 };
+
+const fetchProducts = async () => {
+    try {
+        loading.value = true;
+        const response = await productAPI.getAllProducts({ page: 1, pageSize: 12, isActive: true });
+        const data = response.data;
+        const items = data?.items || data || [];
+
+        products.value = items.map(p => ({
+            id: p.productId,
+            name: p.productName,
+            price: p.basePrice,
+            discountPrice: p.variants?.[0]?.discountPrice || null,
+            category: p.categories?.[0]?.categoryName || 'Product',
+            image: p.images?.[0]?.imageUrl || 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400&h=400&fit=crop',
+            badge: p.featured ? 'New' : (p.variants?.[0]?.discountPrice ? 'Sale' : ''),
+            inStock: p.stock > 0,
+        }));
+    } catch (err) {
+        console.error('Error fetching products:', err);
+    } finally {
+        loading.value = false;
+    }
+};
+
+onMounted(() => {
+    fetchProducts();
+});
 </script>
 
 <template>
     <div class="relative px-12">
-        <!-- Carousel Container -->
-        <div class="overflow-hidden">
-            <div 
-                class="flex transition-transform duration-500 ease-out"
-                :style="{ transform: `translateX(${translateX}%)` }"
-            >
-                <div 
-                    v-for="product in products" 
-                    :key="product.id"
-                    class="w-1/4 shrink-0 px-3"
-                >
-                    <div class="group bg-white rounded-3xl overflow-hidden shadow-sm hover:shadow-2xl transition-all duration-700 border border-gray-100 h-full">
-                        <!-- Product Image -->
-                        <div class="relative overflow-hidden aspect-4/5 bg-gray-50">
-                            <img :src="product.image" :alt="product.name"
-                                class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
-                            <!-- Badge -->
-                            <div v-if="product.badge"
-                                class="absolute top-4 left-4 px-3 py-1 bg-white/90 backdrop-blur-sm text-gray-900 text-[10px] font-bold uppercase tracking-widest rounded-full shadow-sm">
-                                {{ product.badge }}
-                            </div>
-                            <!-- Quick Actions -->
-                            <div class="absolute top-4 right-4 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-all duration-500 translate-x-4 group-hover:translate-x-0">
-                                <button @click="addToWishlist(product.id)"
-                                    class="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-lg hover:bg-violet-600 hover:text-white transition-all duration-300"
-                                    aria-label="Add to wishlist">
-                                    <Heart class="w-5 h-5 transition-colors" />
-                                </button>
-                            </div>
-                            <!-- Add to Cart Overlay -->
-                            <div class="absolute inset-x-4 bottom-4 opacity-0 group-hover:opacity-100 transition-all duration-500 translate-y-4 group-hover:translate-y-0">
-                                <button @click="addToCart(product.id)"
-                                    class="w-full py-4 bg-gray-900 text-white text-sm font-bold rounded-2xl hover:bg-violet-600 transition-colors flex items-center justify-center gap-2 shadow-2xl">
-                                    <ShoppingBag class="w-4 h-4" />
-                                    Add to Cart
-                                </button>
-                            </div>
-                        </div>
-                        <!-- Product Info -->
-                        <div class="p-6 space-y-4">
-                            <div>
-                                <span class="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{{ product.category }}</span>
-                                <h3 class="font-bold text-gray-900 line-clamp-1 group-hover:text-violet-600 transition-colors text-lg mt-1">
+        <!-- Loading Skeleton -->
+        <div v-if="loading" class="grid grid-cols-4 gap-5">
+            <div v-for="n in 4" :key="n" class="animate-pulse">
+                <div class="aspect-[4/5] bg-neutral-100 mb-4"></div>
+                <div class="h-3 bg-neutral-100 w-1/3 mb-3"></div>
+                <div class="h-4 bg-neutral-100 w-2/3 mb-3"></div>
+                <div class="h-4 bg-neutral-100 w-1/4"></div>
+            </div>
+        </div>
+
+        <!-- Carousel -->
+        <template v-else>
+            <div class="overflow-hidden">
+                <div class="flex transition-transform duration-700 ease-out"
+                    :style="{ transform: `translateX(${translateX}%)` }">
+                    <div v-for="product in products" :key="product.id" class="w-1/4 shrink-0 px-2.5">
+                        <div class="product-card group h-full">
+                            <!-- Product Image -->
+                            <RouterLink :to="`/product/${product.id}`"
+                                class="block relative overflow-hidden aspect-[4/5] bg-neutral-50 mb-5">
+                                <img :src="product.image" :alt="product.name"
+                                    class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                                <!-- Badge -->
+                                <div v-if="product.badge"
+                                    class="absolute top-4 left-4 px-3 py-1 text-[9px] font-medium tracking-[0.15em] uppercase text-white"
+                                    style="background-color: #C8A97E;">
+                                    {{ product.badge }}
+                                </div>
+                                <!-- Quick Actions -->
+                                <div
+                                    class="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-all duration-500 translate-y-2 group-hover:translate-y-0">
+                                    <button @click.stop.prevent="addToWishlist(product)"
+                                        class="gold-hover-bg w-10 h-10 bg-white flex items-center justify-center hover:text-white transition-all duration-300"
+                                        aria-label="Add to wishlist">
+                                        <Heart class="w-4 h-4" />
+                                    </button>
+                                </div>
+                                <!-- Add to Cart Overlay -->
+                                <div
+                                    class="absolute inset-x-0 bottom-0 opacity-0 group-hover:opacity-100 transition-all duration-500 translate-y-full group-hover:translate-y-0">
+                                    <button @click.stop.prevent="addToCart(product.id)"
+                                        class="w-full py-4 text-white text-xs font-medium tracking-[0.15em] uppercase hover:opacity-90 transition-colors flex items-center justify-center gap-2"
+                                        style="background-color: #C8A97E;">
+                                        <ShoppingBag class="w-3.5 h-3.5" />
+                                        Add to Cart
+                                    </button>
+                                </div>
+                                <!-- Thin border -->
+                                <div class="absolute inset-0 border border-black/5 pointer-events-none"></div>
+                            </RouterLink>
+                            <!-- Product Info -->
+                            <RouterLink :to="`/product/${product.id}`" class="block space-y-2">
+                                <span class="text-[10px] text-black/30 font-medium tracking-[0.2em] uppercase">{{
+                                    product.category }}</span>
+                                <h3
+                                    class="text-sm font-medium text-black line-clamp-1 group-hover:underline underline-offset-4 transition-all">
                                     {{ product.name }}
                                 </h3>
-                            </div>
-                            
-                            <div class="flex items-center justify-between">
-                                <div class="flex flex-col">
-                                    <span class="text-xl font-black text-gray-900">${{ product.price }}</span>
-                                    <div class="flex items-center gap-1 mt-1">
-                                        <Star class="w-3 h-3 text-amber-400 fill-amber-400" />
-                                        <span class="text-[10px] text-gray-500 font-bold">{{ product.rating }} ({{ product.reviews }})</span>
-                                    </div>
+                                <div class="flex items-center gap-3">
+                                    <span class="text-sm font-medium text-black">${{ product.price?.toFixed(2) }}</span>
+                                    <span v-if="product.discountPrice" class="text-xs text-black/30 line-through">
+                                        ${{ (product.price * 1.2).toFixed(2) }}
+                                    </span>
                                 </div>
-                            </div>
+                            </RouterLink>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <!-- Navigation Arrows -->
-        <button 
-            @click="prevSlide"
-            :disabled="!canGoPrev"
-            class="absolute left-0 top-1/2 -translate-y-1/2 w-14 h-14 bg-white rounded-full shadow-xl flex items-center justify-center transition-all duration-500 z-10 group disabled:opacity-0 disabled:pointer-events-none hover:scale-110 border border-gray-100"
-            aria-label="Previous products"
-        >
-            <ChevronLeft class="w-6 h-6 text-gray-900 group-hover:text-violet-600 transition-colors" />
-        </button>
-        <button 
-            @click="nextSlide"
-            :disabled="!canGoNext"
-            class="absolute right-0 top-1/2 -translate-y-1/2 w-14 h-14 bg-white rounded-full shadow-xl flex items-center justify-center transition-all duration-500 z-10 group disabled:opacity-0 disabled:pointer-events-none hover:scale-110 border border-gray-100"
-            aria-label="Next products"
-        >
-            <ChevronRight class="w-6 h-6 text-gray-900 group-hover:text-violet-600 transition-colors" />
-        </button>
+            <!-- Navigation Arrows -->
+            <button v-if="products.length > itemsPerView" @click="prevSlide" :disabled="!canGoPrev"
+                class="gold-hover-bg absolute left-0 top-[40%] -translate-y-1/2 w-12 h-12 bg-white border border-black/10 flex items-center justify-center transition-all duration-500 z-10 disabled:opacity-0 disabled:pointer-events-none hover:text-white hover:border-transparent"
+                aria-label="Previous products">
+                <ChevronLeft class="w-5 h-5" />
+            </button>
+            <button v-if="products.length > itemsPerView" @click="nextSlide" :disabled="!canGoNext"
+                class="gold-hover-bg absolute right-0 top-[40%] -translate-y-1/2 w-12 h-12 bg-white border border-black/10 flex items-center justify-center transition-all duration-500 z-10 disabled:opacity-0 disabled:pointer-events-none hover:text-white hover:border-transparent"
+                aria-label="Next products">
+                <ChevronRight class="w-5 h-5" />
+            </button>
 
-        <!-- Progress Indicators -->
-        <div class="flex items-center justify-center gap-1 mt-12">
-            <button
-                v-for="i in (maxIndex + 1)" 
-                :key="i"
-                @click="goToSlide(i - 1)"
-                class="transition-all duration-500 rounded-full cursor-pointer"
-                :class="currentIndex === (i - 1) ? 'w-12 h-1 bg-gray-900' : 'w-4 h-1 bg-gray-200 hover:bg-gray-300'"
-                :aria-label="`Go to slide ${i}`"
-            ></button>
-        </div>
+            <!-- Progress Indicators -->
+            <div v-if="products.length > itemsPerView" class="flex items-center justify-center gap-2 mt-12">
+                <button v-for="i in (maxIndex + 1)" :key="i" @click="currentIndex = i - 1"
+                    class="transition-all duration-500 cursor-pointer"
+                    :class="currentIndex === (i - 1) ? 'w-8 h-[2px]' : 'w-4 h-[2px] hover:opacity-60'"
+                    :style="currentIndex === (i - 1) ? 'background-color: #C8A97E;' : 'background-color: rgba(0,0,0,0.12);'"
+                    :aria-label="`Go to slide ${i}`"></button>
+            </div>
+
+            <!-- Empty State -->
+            <div v-if="!loading && products.length === 0" class="text-center py-16">
+                <p class="text-black/30 text-sm">No products available at the moment.</p>
+            </div>
+        </template>
     </div>
 </template>
 
 <style scoped>
-/* Smooth carousel transitions */
+.product-card {
+    cursor: pointer;
+}
+
+.gold-hover-bg:hover {
+    background-color: #C8A97E;
+}
 </style>

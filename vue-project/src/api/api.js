@@ -32,64 +32,34 @@ api.interceptors.request.use(
     }
 )
 
-// ==========================
 // RESPONSE INTERCEPTOR
-// ==========================
-// api.interceptors.response.use(
-//     (response) => {
-//         console.log('✅ Response received:', response.status, response.config.url)
-//         return response
-//     },
-//     async (error) => {
-//         console.error('❌ Response error:', {
-//             status: error.response?.status,
-//             message: error.message,
-//             url: error.config?.url,
-//             data: error.response?.data
-//         })
+api.interceptors.response.use(
+    (response) => {
+        return response
+    },
+    async (error) => {
+        // Handle 401 Unauthorized - token expired or invalid
+        if (error.response?.status === 401) {
+            const originalRequest = error.config
 
-//         // Handle timeout errors
-//         if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
-//             const timeoutError = new Error('Request timeout. Please check your connection and try again.')
-//             timeoutError.isTimeout = true
-//             return Promise.reject(timeoutError)
-//         }
+            // Don't redirect for auth endpoints (login, register, refresh)
+            if (!originalRequest.url.includes('/auth/')) {
+                console.warn('⚠️ 401 Unauthorized - token may be expired. Please log in again.')
+                // Clear stored auth data
+                localStorage.removeItem('accessToken')
+                localStorage.removeItem('user')
+                sessionStorage.removeItem('accessToken')
+                sessionStorage.removeItem('user')
 
-//         // Handle network errors
-//         if (!error.response) {
-//             const networkError = new Error('Network error. Please check if the server is running.')
-//             networkError.isNetworkError = true
-//             return Promise.reject(networkError)
-//         }
+                // Only redirect if not already on login page
+                if (!window.location.pathname.includes('/login')) {
+                    window.location.href = '/login'
+                }
+            }
+        }
 
-//         const originalRequest = error.config
-//         // Prevent infinite loop
-//         if (
-//             error.response?.status === 401 &&
-//             !originalRequest._retry &&
-//             !originalRequest.url.includes("/auth/refresh")
-//         ) {
-//             originalRequest._retry = true
-//             try {
-//                 const authStore = useAuthStore()
-//                 const newToken = await authStore.refreshToken()
-//                 // Save token
-//                 localStorage.setItem("accessToken", newToken)
-//                 // Retry original request
-//                 originalRequest.headers.Authorization = `Bearer ${newToken}`
-//                 return api(originalRequest)
-//             } catch (refreshError) {
-//                 console.error('❌ Token refresh failed:', refreshError)
-//                 const authStore = useAuthStore()
-//                 authStore.clearAuth()
-//                 // Soft redirect (router preferred)
-//                 window.location.replace("/login")
-//                 return Promise.reject(refreshError)
-//             }
-//         }
-
-//         return Promise.reject(error)
-//     }
-// )
+        return Promise.reject(error)
+    }
+)
 
 export default api
